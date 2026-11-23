@@ -5,43 +5,48 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#090909">
-<title>DARK EDITOR 0.4</title>
+<title>DARK EDITOR 0.5</title>
 <style>
 *{box-sizing:border-box}
-body{margin:0;background:#090909;color:#eee;font-family:Arial}
-header{text-align:center;padding:22px;border-bottom:1px solid #bd943e}
-h1,h2{color:#d6ad54}
-h1{letter-spacing:4px}
-main{max-width:760px;margin:auto;padding:15px}
-.panel{background:#171717;border:1px solid #554323;border-radius:12px;padding:16px;margin-bottom:15px}
-button,.upload{display:inline-block;background:#292319;color:#e7bd65;border:1px solid #bd943e;padding:11px;border-radius:8px;margin:4px;cursor:pointer}
+body{margin:0;background:#090909;color:#eee;font-family:Arial,sans-serif}
+header{text-align:center;padding:20px;border-bottom:1px solid #bd943e}
+h1{color:#d6ad54;letter-spacing:4px;margin:0}
+main{max-width:850px;margin:auto;padding:14px}
+.panel{background:#171717;border:1px solid #554323;border-radius:12px;padding:15px;margin-bottom:15px}
+h2{font-size:17px;color:#d6ad54}
+button,.upload{display:inline-block;background:#292319;color:#e7bd65;border:1px solid #bd943e;padding:10px;border-radius:7px;margin:3px;cursor:pointer}
 button.active{background:#bd943e;color:#111}
-input,textarea,select{width:100%;padding:12px;margin:7px 0;background:#090909;color:white;border:1px solid #70572c;border-radius:7px}
-.tabs{display:flex}
-.tabs button{flex:1}
+input,textarea,select{width:100%;padding:11px;margin:6px 0;background:#090909;color:white;border:1px solid #70572c;border-radius:7px}
 .small{font-size:12px;color:#aaa}
 .gold{color:#d6ad54}
-#screen{position:relative;background:#000;width:100%;min-height:180px}
-#video{width:100%;max-height:350px;display:block}
-#subtitle{position:absolute;left:5%;right:5%;text-align:center;color:#ffd66b;font-size:24px;font-weight:bold;text-shadow:2px 2px 4px black,-1px -1px 3px black;pointer-events:none;display:none;z-index:5}
-#subtitle.top{top:12%}
+#screen{position:relative;background:#000}
+#video{width:100%;max-height:340px;display:block}
+#subtitle{position:absolute;left:4%;right:4%;text-align:center;color:#ffd66b;font-size:23px;font-weight:bold;text-shadow:2px 2px 4px black;pointer-events:none;display:none}
+#subtitle.top{top:10%}
 #subtitle.middle{top:45%;transform:translateY(-50%)}
-#subtitle.bottom{bottom:16%}
-.scene,.captionItem{background:#242424;padding:10px;margin:8px 0;border-radius:7px}
-.scene{display:flex;justify-content:space-between;gap:5px;align-items:center}
-.scene button{padding:6px}
-footer{text-align:center;color:#888;padding:20px}
+#subtitle.bottom{bottom:15%}
+.track{background:#101010;border:1px solid #554323;padding:10px;border-radius:8px;margin:10px 0}
+.trackTitle{color:#d6ad54;font-size:13px;margin-bottom:8px}
+.timeline{display:flex;gap:5px;overflow-x:auto;padding:7px 0;min-height:65px}
+.clip{min-width:110px;max-width:160px;flex:1;background:#342b1b;border:1px solid #bd943e;padding:9px;border-radius:7px;cursor:pointer;font-size:12px;overflow-wrap:anywhere}
+.clip.selected{background:#bd943e;color:#111}
+.clip small{display:block;margin-top:6px}
+.item{background:#242424;padding:10px;border-radius:7px;margin:7px 0}
+.row{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.row>*{flex:1}
+footer{text-align:center;color:#777;padding:20px}
 </style>
 </head>
 <body>
 <header>
 <h1>DARK EDITOR</h1>
-<p class="gold">BLACK & GOLD CINEMA STUDIO • VERSION 0.4</p>
+<p class="gold">BLACK & GOLD CINEMA STUDIO • VERSION 0.5</p>
 </header>
 <main>
+
 <section class="panel">
-<h2>TRYB MONTAŻU</h2>
-<div class="tabs">
+<h2>1. TRYB MONTAŻU</h2>
+<div class="row">
 <button id="auto" class="active" onclick="setMode('auto')">AUTOMATYCZNY</button>
 <button id="manual" onclick="setMode('manual')">RĘCZNY</button>
 </div>
@@ -49,35 +54,78 @@ footer{text-align:center;color:#888;padding:20px}
 </section>
 
 <section class="panel">
-<h2>1. MATERIAŁY</h2>
-<label class="upload">＋ Dodaj filmy i zdjęcia
-<input id="media" type="file" accept="video/*,image/*" multiple hidden>
-</label>
-<label class="upload">＋ Dodaj muzykę
-<input id="audioFile" type="file" accept="audio/*" hidden>
-</label>
+<h2>2. PODGLĄD FILMU</h2>
 <div id="screen">
 <video id="video" controls playsinline></video>
 <div id="subtitle"></div>
 </div>
+<div class="row">
+<button onclick="playSequence()">▶ ODTWÓRZ MONTAŻ</button>
+<button onclick="stopSequence()">■ ZATRZYMAJ</button>
+</div>
+<p id="previewInfo" class="small">Wybierz scenę z osi czasu.</p>
+</section>
+
+<section class="panel">
+<h2>3. DODAJ MATERIAŁY</h2>
+<label class="upload">＋ FILMY I ZDJĘCIA
+<input id="media" type="file" accept="video/*,image/*" multiple hidden>
+</label>
+<p class="small">Dodaj materiały z galerii telefonu.</p>
+<div id="fileInfo" class="small">Brak materiałów.</div>
+</section>
+
+<section class="panel">
+<h2>4. OŚ CZASU MONTAŻU</h2>
+<div class="track">
+<div class="trackTitle">ŚCIEŻKA WIDEO</div>
+<div id="videoTrack" class="timeline">Dodaj materiały</div>
+</div>
+<div class="track">
+<div class="trackTitle">ŚCIEŻKA MUZYKI</div>
+<div id="audioTrack" class="timeline">Brak muzyki</div>
+</div>
+<div class="track">
+<div class="trackTitle">ŚCIEŻKA NAPISÓW</div>
+<div id="captionTrack" class="timeline">Brak napisów</div>
+</div>
+<p class="small">Wybierz klip, aby zmienić jego długość i kolejność.</p>
+</section>
+
+<section class="panel">
+<h2>5. EDYCJA WYBRANEJ SCENY</h2>
+<div id="selectedInfo" class="small">Nie wybrano sceny.</div>
+<label class="small">Długość sceny w sekundach</label>
+<input id="duration" type="number" min="0.5" step="0.5" value="5">
+<div class="row">
+<button onclick="applyDuration()">ZASTOSUJ DŁUGOŚĆ</button>
+<button onclick="removeScene()">USUŃ SCENĘ</button>
+</div>
+<div class="row">
+<button onclick="moveScene(-1)">↑ PRZESUŃ W LEWO</button>
+<button onclick="moveScene(1)">↓ PRZESUŃ W PRAWO</button>
+</div>
+<p class="small">Uwaga: długość sceny określa czas jej odtwarzania w sekwencji montażu.</p>
+</section>
+
+<section class="panel">
+<h2>6. MUZYKA I LEKTOR</h2>
+<label class="upload">＋ DODAJ MUZYKĘ / LEKTORA
+<input id="audioFile" type="file" accept="audio/*" hidden>
+</label>
 <audio id="audio" controls style="width:100%;margin-top:10px"></audio>
-<p id="fileInfo" class="small">Nie dodano materiałów.</p>
+<label class="small">Głośność muzyki</label>
+<input id="volume" type="range" min="0" max="100" value="60">
+<p id="audioInfo" class="small">Nie dodano audio.</p>
 </section>
 
 <section class="panel">
-<h2>2. SCENY I KOLEJNOŚĆ</h2>
-<div id="scenes" class="small">Dodaj film, aby zobaczyć sceny.</div>
-</section>
-
-<section class="panel">
-<h2>3. NAPISY NA FILMIE</h2>
-<p class="small">Wpisz tekst i ustaw, kiedy ma być widoczny.</p>
-<textarea id="captionText" rows="2" placeholder="Wpisz treść napisu..."></textarea>
-<label class="small">Początek wyświetlania (sekundy)</label>
-<input id="startTime" type="number" min="0" step="0.1" value="0">
-<label class="small">Koniec wyświetlania (sekundy)</label>
-<input id="endTime" type="number" min="0.1" step="0.1" value="5">
-<label class="small">Położenie napisu</label>
+<h2>7. NAPISY NA FILMIE</h2>
+<textarea id="captionText" rows="2" placeholder="Wpisz tekst napisu..."></textarea>
+<label class="small">Początek (sekundy)</label>
+<input id="captionStart" type="number" min="0" step="0.5" value="0">
+<label class="small">Koniec (sekundy)</label>
+<input id="captionEnd" type="number" min="0.5" step="0.5" value="5">
 <select id="position">
 <option value="bottom">Dół filmu</option>
 <option value="middle">Środek filmu</option>
@@ -85,98 +133,173 @@ footer{text-align:center;color:#888;padding:20px}
 </select>
 <button onclick="addCaption()">＋ DODAJ NAPIS</button>
 <div id="captionList"></div>
-<p class="small">Uruchom film i sprawdź, czy napis pojawia się w ustawionym czasie.</p>
 </section>
 
 <section class="panel">
-<h2>4. ZAPIS PROJEKTU</h2>
-<input id="projectName" value="Mój projekt">
+<h2>8. ZAPIS PROJEKTU</h2>
+<input id="projectName" value="Mój pierwszy projekt">
 <button onclick="saveProject()">ZAPISZ PROJEKT</button>
 <p id="saved" class="small">Projekt nie został zapisany.</p>
+<p class="small">Zapis przechowuje ustawienia i listę materiałów, nie kopiuje plików multimedialnych.</p>
 </section>
+
+<footer>DARK EDITOR 0.5 • BLACK & GOLD</footer>
 </main>
-<footer>DARK EDITOR 0.4 • BLACK & GOLD</footer>
 
 <script>
-let files=[];
+let scenes=[];
 let captions=[];
-let currentMode="auto";
+let selected=-1;
+let audioUrl=null;
+let mode="auto";
+let sequenceTimer=null;
+let sequenceIndex=0;
+let sequenceElapsed=0;
+let sequencePlaying=false;
+
 const video=document.getElementById("video");
 const overlay=document.getElementById("subtitle");
+const audio=document.getElementById("audio");
 
-function setMode(mode){
-currentMode=mode;
-document.getElementById("auto").classList.toggle("active",mode==="auto");
-document.getElementById("manual").classList.toggle("active",mode==="manual");
-document.getElementById("modeText").textContent=mode==="auto"?
-"Tryb automatyczny: przygotuj kolejność materiałów.":
-"Tryb ręczny: samodzielnie zmieniaj kolejność scen.";
+function setMode(m){
+mode=m;
+document.getElementById("auto").classList.toggle("active",m==="auto");
+document.getElementById("manual").classList.toggle("active",m==="manual");
+document.getElementById("modeText").textContent=m==="auto"?
+"Tryb automatyczny: przygotuj kolejność scen.":
+"Tryb ręczny: wybieraj i zmieniaj sceny.";
 }
 
 document.getElementById("media").addEventListener("change",e=>{
-for(const file of e.target.files){
-files.push({file,url:URL.createObjectURL(file)});
+for(const f of e.target.files){
+const isVideo=f.type.startsWith("video/");
+scenes.push({
+file:f,
+url:URL.createObjectURL(f),
+duration:5,
+isVideo:isVideo
+});
 }
-renderScenes();
+if(selected<0&&scenes.length)selected=0;
+render();
 });
 
-document.getElementById("audioFile").addEventListener("change",e=>{
-if(e.target.files[0]){
-document.getElementById("audio").src=URL.createObjectURL(e.target.files[0]);
+function render(){
+const track=document.getElementById("videoTrack");
+track.innerHTML="";
+scenes.forEach((s,i)=>{
+const c=document.createElement("div");
+c.className="clip"+(i===selected?" selected":"");
+c.style.minWidth=Math.max(110,Math.min(200,s.duration*12))+"px";
+c.textContent=(i+1)+". "+s.file.name;
+const small=document.createElement("small");
+small.textContent=s.duration+" sek.";
+c.append(small);
+c.onclick=()=>selectScene(i);
+track.append(c);
+});
+document.getElementById("fileInfo").textContent="Materiały: "+scenes.length;
+renderCaptions();
+renderAudio();
+updateSelected();
 }
-});
 
-function renderScenes(){
-const box=document.getElementById("scenes");
-box.innerHTML="";
-files.forEach((item,i)=>{
-const div=document.createElement("div");
-div.className="scene";
-const name=document.createElement("span");
-name.textContent=(i+1)+". "+item.file.name;
-const controls=document.createElement("span");
-const play=document.createElement("button");
-play.textContent="▶";
-play.onclick=()=>showScene(i);
-const up=document.createElement("button");
-up.textContent="↑";
-up.onclick=()=>moveScene(i,-1);
-const down=document.createElement("button");
-down.textContent="↓";
-down.onclick=()=>moveScene(i,1);
-controls.append(play,up,down);
-div.append(name,controls);
-box.append(div);
-});
-document.getElementById("fileInfo").textContent="Liczba materiałów: "+files.length;
-if(files.length)showScene(0);
+function selectScene(i){
+if(i<0||i>=scenes.length)return;
+selected=i;
+showScene(i);
+render();
 }
 
 function showScene(i){
-const item=files[i];
-if(item.file.type.startsWith("video")){
-video.src=item.url;
+const s=scenes[i];
+stopSequence();
+if(s.isVideo){
 video.style.display="block";
+video.src=s.url;
 video.load();
+video.currentTime=0;
 }else{
 video.pause();
 video.removeAttribute("src");
 video.style.display="none";
 overlay.style.display="none";
 }
+document.getElementById("previewInfo").textContent="Scena "+(i+1)+": "+s.file.name;
 }
 
-function moveScene(i,d){
-const j=i+d;
-if(j<0||j>=files.length)return;
-[files[i],files[j]]=[files[j],files[i]];
-renderScenes();
+function updateSelected(){
+const info=document.getElementById("selectedInfo");
+if(selected<0||!scenes[selected]){
+info.textContent="Nie wybrano sceny.";
+return;
+}
+info.textContent="Wybrano: "+scenes[selected].file.name;
+document.getElementById("duration").value=scenes[selected].duration;
+}
+
+function applyDuration(){
+if(selected<0||!scenes[selected])return;
+const d=Number(document.getElementById("duration").value);
+if(!Number.isFinite(d)||d<=0){alert("Podaj prawidłową długość.");return;}
+scenes[selected].duration=d;
+render();
+}
+
+function moveScene(d){
+if(selected<0)return;
+const j=selected+d;
+if(j<0||j>=scenes.length)return;
+[scenes[selected],scenes[j]]=[scenes[j],scenes[selected]];
+selected=j;
+render();
+}
+
+function removeScene(){
+if(selected<0)return;
+scenes.splice(selected,1);
+selected=scenes.length?Math.min(selected,scenes.length-1):-1;
+if(selected>=0)showScene(selected);
+else{
+video.pause();
+video.removeAttribute("src");
+video.style.display="block";
+overlay.style.display="none";
+}
+render();
+}
+
+document.getElementById("audioFile").addEventListener("change",e=>{
+const f=e.target.files[0];
+if(!f)return;
+if(audioUrl)URL.revokeObjectURL(audioUrl);
+audioUrl=URL.createObjectURL(f);
+audio.src=audioUrl;
+audio.load();
+audio.volume=Number(document.getElementById("volume").value)/100;
+document.getElementById("audioInfo").textContent="Muzyka: "+f.name;
+renderAudio();
+});
+
+document.getElementById("volume").addEventListener("input",e=>{
+audio.volume=Number(e.target.value)/100;
+});
+
+function renderAudio(){
+const track=document.getElementById("audioTrack");
+track.innerHTML="";
+if(!audioUrl){track.textContent="Brak muzyki";return;}
+const block=document.createElement("div");
+block.className="clip";
+block.style.minWidth="180px";
+block.textContent="♫ "+(document.getElementById("audioInfo").textContent);
+track.append(block);
 }
 
 function addCaption(){
 const text=document.getElementById("captionText").value.trim();
-const start=Number(document.getElementById("startTime").value);
-const end=Number(document.getElementById("endTime").value);
+const start=Number(document.getElementById("captionStart").value);
+const end=Number(document.getElementById("captionEnd").value);
 const position=document.getElementById("position").value;
 if(!text){alert("Wpisz treść napisu.");return;}
 if(start<0||end<=start){alert("Koniec musi być późniejszy niż początek.");return;}
@@ -187,13 +310,16 @@ updateSubtitle();
 }
 
 function renderCaptions(){
-const box=document.getElementById("captionList");
-box.innerHTML="";
+const list=document.getElementById("captionList");
+const track=document.getElementById("captionTrack");
+list.innerHTML="";
+track.innerHTML="";
+if(!captions.length)track.textContent="Brak napisów";
 captions.forEach((c,i)=>{
 const div=document.createElement("div");
-div.className="captionItem";
+div.className="item";
 const label=document.createElement("span");
-label.textContent=(i+1)+". "+c.text+" ("+c.start+"–"+c.end+" s)";
+label.textContent=(i+1)+". "+c.text+" • "+c.start+"–"+c.end+" s";
 const del=document.createElement("button");
 del.textContent="Usuń";
 del.onclick=()=>{
@@ -202,13 +328,22 @@ renderCaptions();
 updateSubtitle();
 };
 div.append(label,del);
-box.append(div);
+list.append(div);
+const block=document.createElement("div");
+block.className="clip";
+block.style.minWidth=Math.max(100,(c.end-c.start)*15)+"px";
+block.textContent=c.text;
+const small=document.createElement("small");
+small.textContent=c.start+"–"+c.end+" s";
+block.append(small);
+track.append(block);
 });
 }
 
 function updateSubtitle(){
-const time=video.currentTime;
-const active=captions.find(c=>time>=c.start&&time<c.end);
+if(!video.src||video.style.display==="none")return;
+const t=video.currentTime;
+const active=captions.find(c=>t>=c.start&&t<c.end);
 if(active){
 overlay.textContent=active.text;
 overlay.className=active.position;
@@ -217,18 +352,77 @@ overlay.style.display="block";
 overlay.style.display="none";
 }
 }
+
 video.addEventListener("timeupdate",updateSubtitle);
 video.addEventListener("seeked",updateSubtitle);
+
+function stopSequence(){
+sequencePlaying=false;
+if(sequenceTimer)clearTimeout(sequenceTimer);
+sequenceTimer=null;
+}
+
+function playSequence(){
+if(!scenes.length){alert("Najpierw dodaj materiały.");return;}
+stopSequence();
+sequenceIndex=0;
+sequenceElapsed=0;
+playNext();
+if(audioUrl){
+audio.currentTime=0;
+audio.play().catch(()=>{});
+}
+}
+
+function playNext(){
+if(!sequencePlaying && sequenceIndex!==0)return;
+if(sequenceIndex>=scenes.length){
+stopSequence();
+audio.pause();
+return;
+}
+sequencePlaying=true;
+selected=sequenceIndex;
+const s=scenes[sequenceIndex];
+render();
+if(s.isVideo){
+video.style.display="block";
+video.src=s.url;
+video.load();
+video.onloadedmetadata=()=>{
+if(!sequencePlaying)return;
+video.currentTime=0;
+video.play().catch(()=>{});
+sequenceTimer=setTimeout(nextScene,s.duration*1000);
+};
+}else{
+video.pause();
+video.style.display="none";
+overlay.style.display="none";
+sequenceTimer=setTimeout(nextScene,s.duration*1000);
+}
+}
+
+function nextScene(){
+if(!sequencePlaying)return;
+video.pause();
+sequenceIndex++;
+playNext();
+}
 
 function saveProject(){
 const data={
 name:document.getElementById("projectName").value,
-mode:currentMode,
-scenes:files.map(f=>f.file.name),
-captions:captions
+mode,
+scenes:scenes.map(s=>({name:s.file.name,duration:s.duration})),
+captions
 };
-localStorage.setItem("darkEditor04",JSON.stringify(data));
+try{
+localStorage.setItem("darkEditor05",JSON.stringify(data));
 document.getElementById("saved").textContent="Zapisano ustawienia projektu na tym urządzeniu.";
+}catch(e){
+document.getElementById("saved").textContent="Nie udało się zapisać projektu.";
+}
 }
 </script>
 </body>

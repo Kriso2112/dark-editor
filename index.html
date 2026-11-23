@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DARK EDITOR 0.6</title>
+<title>DARK EDITOR 0.6.1</title>
 <style>
 :root{--gold:#d6ad55;--bg:#090909;--panel:#171717;--line:#393021}
 *{box-sizing:border-box}
@@ -23,7 +23,7 @@ input[type=range]{padding:0}
 .row>*{flex:1}
 .small{font-size:12px;color:#aaa}
 #previewBox{background:#000;min-height:190px;display:flex;align-items:center;justify-content:center;position:relative;border-radius:8px;overflow:hidden}
-#video,#photo{max-width:100%;max-height:55vh;display:none}
+#video,#photo{max-width:100%;max-height:55vh;display:none;object-fit:contain}
 #caption{position:absolute;bottom:12%;left:4%;right:4%;text-align:center;color:white;font-size:22px;font-weight:bold;text-shadow:2px 2px 5px #000,-1px -1px 4px #000;pointer-events:none}
 #emptyPreview{color:#777;text-align:center;padding:35px}
 .track{background:#0b0b0b;border:1px solid #42351f;border-radius:8px;padding:10px;margin:8px 0}
@@ -39,7 +39,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 <body>
 <header>
 <h1>DARK EDITOR</h1>
-<p>BLACK & GOLD CINEMA STUDIO • VERSION 0.6</p>
+<p>BLACK & GOLD CINEMA STUDIO • VERSION 0.6.1</p>
 </header>
 
 <section>
@@ -70,7 +70,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 <h2>3. DODAJ FILMY I ZDJĘCIA</h2>
 <label class="filebtn" for="mediaInput">＋ WYBIERZ Z GALERII</label>
 <input id="mediaInput" type="file" accept="video/*,image/*" multiple class="hidden">
-<p class="small">Możesz zaznaczyć kilka filmów i zdjęć jednocześnie.</p>
+<p class="small">Możesz dodać kilka filmów i zdjęć jednocześnie.</p>
 <div id="mediaStatus" class="status">Nie dodano materiałów.</div>
 </section>
 
@@ -139,315 +139,360 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 <input id="projectName" value="Mój projekt">
 <button id="saveProject">ZAPISZ PROJEKT</button>
 <div id="saveStatus" class="status">Projekt nie został zapisany.</div>
-<p class="small">Zapis obejmuje ustawienia, nazwy plików, długości scen i napisy. Pliki multimedialne trzeba ponownie dodać po ponownym otwarciu strony.</p>
+<p class="small">Zapis obejmuje ustawienia, nazwy plików, długości scen i napisy. Zapis przechowuje ustawienia i listę materiałów, nie kopiuje plików multimedialnych. Po ponownym otwarciu strony dodaj je ponownie.</p>
 </section>
 
-<footer>DARK EDITOR 0.6 • BLACK & GOLD</footer>
+<footer>DARK EDITOR 0.6.1 • BLACK & GOLD</footer>
 
 <script>
 (() => {
 "use strict";
-
 const $ = id => document.getElementById(id);
-let clips = [];
-let subtitles = [];
-let selected = -1;
-let audioUrl = null;
-let playing = false;
-let playToken = 0;
-let mode = "auto";
-let currentElapsed = 0;
+const video = $("video"), photo = $("photo"), audio = $("audio");
+let clips = [], subtitles = [], selected = -1, audioUrl = null;
+let playing = false, playToken = 0, mode = "auto", currentElapsed = 0;
 let clipStartElapsed = 0;
 
-const video = $("video");
-const photo = $("photo");
-const audio = $("audio");
+const status = (id, text) => { $(id).textContent = text; };
+const safeDuration = value => Math.max(1, Math.min(600, Number(value) || 5));
+const clipOffset = index => clips.slice(0, Math.max(0, index)).reduce((sum, c) => sum + safeDuration(c.duration), 0);
 
-function status(id,text){$(id).textContent=text;}
-
-function stopPlayback(){
-  playing=false;
-  playToken++;
-  video.pause();
-  audio.pause();
-  $("caption").textContent="";
-  status("playStatus","Odtwarzanie zatrzymane.");
+function updateCaption(time) {
+const active = subtitles.find(s => time >= Number(s.start) && time < Number(s.end));
+const caption = $("caption");
+if (!active) { caption.textContent = ""; return; }
+caption.textContent = active.text;
+caption.style.top = active.position === "top" ? "10%" : active.position === "middle" ? "45%" : "";
+caption.style.bottom = active.position === "bottom" ? "12%" : "";
 }
 
-function selectClip(index){
-  if(index<0 || index>=clips.length)return;
-  selected=index;
-  const clip=clips[index];
-  video.pause();
-  video.removeAttribute("src");
-  video.load();
-  photo.removeAttribute("src");
-  video.style.display="none";
-  photo.style.display="none";
-  $("emptyPreview").style.display="none";
-  $("caption").textContent="";
-  if(clip.type==="video"){
-    video.src=clip.url;
-    video.style.display="block";
-  }else{
-    photo.src=clip.url;
-    photo.style.display="block";
-  }
-  $("durationInput").value=clip.duration;
-  status("selectedInfo","Wybrana scena: "+clip.name+" ("+clip.duration+" s)");
-  renderClips();
-  updateCaption(0);
+function stopPlayback(message = "Odtwarzanie zatrzymane.") {
+playing = false;
+playToken++;
+video.pause();
+audio.pause();
+$("caption").textContent = "";
+status("playStatus", message);
 }
 
-function renderClips(){
-  const track=$("videoTrack");
-  track.innerHTML="";
-  if(!clips.length){track.textContent="Brak materiałów.";return;}
-  clips.forEach((clip,i)=>{
-    const box=document.createElement("div");
-    box.className="clip"+(i===selected?" selected":"");
-    const name=document.createElement("div");
-    name.textContent=(i+1)+". "+clip.name+" • "+clip.duration+" s";
-    box.appendChild(name);
-    const actions=document.createElement("div");
-    const b=document.createElement("button");
-    b.textContent="WYBIERZ";
-    b.onclick=()=>selectClip(i);
-    actions.appendChild(b);
-    box.appendChild(actions);
-    track.appendChild(box);
-  });
-  status("mediaStatus",clips.length+" materiał(ów) dodanych.");
+function showClip(clip) {
+video.pause();
+video.removeAttribute("src");
+video.load();
+photo.removeAttribute("src");
+video.style.display = "none";
+photo.style.display = "none";
+$("emptyPreview").style.display = "none";
+if (clip.type === "video") {
+video.src = clip.url;
+video.style.display = "block";
+} else {
+photo.src = clip.url;
+photo.style.display = "block";
+}
 }
 
-$("mediaInput").addEventListener("change",e=>{
-  const files=Array.from(e.target.files||[]);
-  let added=0;
-  files.forEach(file=>{
-    if(!file.type.startsWith("video/")&&!file.type.startsWith("image/"))return;
-    const type=file.type.startsWith("video/")?"video":"image";
-    clips.push({
-      name:file.name,
-      type,
-      url:URL.createObjectURL(file),
-      duration:type==="video"?Math.max(1,Math.round(5)):5
-    });
-    added++;
-  });
-  renderClips();
-  if(added){
-    selectClip(clips.length-1);
-    status("mediaStatus","Dodano "+added+" plik(ów).");
-  }else{
-    status("mediaStatus","Nie wybrano obsługiwanych plików.");
-  }
-  e.target.value="";
+function selectClip(index) {
+if (index < 0 || index >= clips.length) return;
+selected = index;
+const clip = clips[index];
+showClip(clip);
+$("durationInput").value = clip.duration;
+status("selectedInfo", `Wybrana scena: ${clip.name} (${clip.duration} s)`);
+renderClips();
+currentElapsed = clipOffset(index);
+updateCaption(currentElapsed);
+}
+
+function renderClips() {
+const track = $("videoTrack");
+track.replaceChildren();
+if (!clips.length) {
+track.textContent = "Brak materiałów.";
+status("mediaStatus", "Nie dodano materiałów.");
+return;
+}
+clips.forEach((clip, i) => {
+const box = document.createElement("div");
+box.className = "clip" + (i === selected ? " selected" : "");
+const name = document.createElement("div");
+name.textContent = `${i + 1}. ${clip.name} • ${clip.duration} s${clip.type === "image" ? " • zdjęcie" : " • film"}`;
+const actions = document.createElement("div");
+const choose = document.createElement("button");
+choose.textContent = "WYBIERZ";
+choose.onclick = () => selectClip(i);
+actions.appendChild(choose);
+box.append(name, actions);
+track.appendChild(box);
+});
+status("mediaStatus", `${clips.length} materiał(ów) dodanych.`);
+}
+
+function renderSubtitles() {
+const list = $("subtitleList");
+list.replaceChildren();
+$("subtitleTrack").textContent = subtitles.length ? `${subtitles.length} napis(ów) dodanych.` : "Brak napisów.";
+subtitles.forEach((s, i) => {
+const div = document.createElement("div");
+div.className = "clip";
+const label = document.createElement("div");
+label.textContent = `${i + 1}. ${s.text} (${s.start}–${s.end} s)`;
+const del = document.createElement("button");
+del.textContent = "USUŃ";
+del.onclick = () => {
+subtitles.splice(i, 1);
+renderSubtitles();
+updateCaption(currentElapsed);
+};
+div.append(label, del);
+list.appendChild(div);
+});
+}
+
+function waitForMetadata() {
+if (video.readyState >= 1) return Promise.resolve();
+return new Promise((resolve, reject) => {
+const done = () => { cleanup(); resolve(); };
+const fail = () => { cleanup(); reject(new Error("Nie można wczytać filmu.")); };
+const cleanup = () => {
+video.removeEventListener("loadedmetadata", done);
+video.removeEventListener("error", fail);
+};
+video.addEventListener("loadedmetadata", done, { once: true });
+video.addEventListener("error", fail, { once: true });
+video.load();
+});
+}
+
+$("mediaInput").addEventListener("change", e => {
+const files = Array.from(e.target.files || []);
+let added = 0;
+files.forEach(file => {
+if (!file.type.startsWith("video/") && !file.type.startsWith("image/")) return;
+const type = file.type.startsWith("video/") ? "video" : "image";
+clips.push({
+name: file.name,
+type,
+url: URL.createObjectURL(file),
+duration: 5
+});
+added++;
+});
+renderClips();
+if (added) {
+selectClip(clips.length - 1);
+status("mediaStatus", `Dodano ${added} plik(ów).`);
+} else {
+status("mediaStatus", "Nie wybrano obsługiwanych plików.");
+}
+e.target.value = "";
 });
 
-$("applyDuration").onclick=()=>{
-  if(selected<0)return alert("Najpierw wybierz scenę.");
-  const value=Number($("durationInput").value);
-  if(!Number.isFinite(value)||value<1||value>600)return alert("Podaj długość od 1 do 600 sekund.");
-  clips[selected].duration=value;
-  renderClips();
-  selectClip(selected);
-};
-
-$("deleteClip").onclick=()=>{
-  if(selected<0)return alert("Nie wybrano sceny.");
-  const removed=clips.splice(selected,1)[0];
-  URL.revokeObjectURL(removed.url);
-  selected=-1;
-  $("video").pause();
-  $("video").removeAttribute("src");
-  $("video").load();
-  $("video").style.display="none";
-  $("photo").style.display="none";
-  $("emptyPreview").style.display="block";
-  status("selectedInfo","Nie wybrano sceny.");
-  $("caption").textContent="";
-  renderClips();
-};
-
-function moveClip(direction){
-  if(selected<0)return alert("Najpierw wybierz scenę.");
-  const next=selected+direction;
-  if(next<0||next>=clips.length)return;
-  [clips[selected],clips[next]]=[clips[next],clips[selected]];
-  selected=next;
-  renderClips();
-  selectClip(selected);
+video.addEventListener("loadedmetadata", () => {
+if (selected >= 0 && clips[selected]?.type === "video") {
+const natural = Number.isFinite(video.duration) ? Math.max(1, Math.round(video.duration)) : 5;
+if (clips[selected].duration === 5) clips[selected].duration = natural;
+$("durationInput").value = clips[selected].duration;
+renderClips();
 }
-$("moveLeft").onclick=()=>moveClip(-1);
-$("moveRight").onclick=()=>moveClip(1);
-
-$("audioInput").addEventListener("change",e=>{
-  const file=e.target.files&&e.target.files[0];
-  if(!file)return;
-  if(audioUrl)URL.revokeObjectURL(audioUrl);
-  audioUrl=URL.createObjectURL(file);
-  audio.src=audioUrl;
-  audio.load();
-  audio.volume=Number($("volumeInput").value)/100;
-  status("audioStatus","Dodano: "+file.name);
-  $("audioTrack").textContent=file.name;
-  e.target.value="";
 });
 
-$("volumeInput").oninput=()=>{
-  const value=Number($("volumeInput").value);
-  audio.volume=value/100;
-  $("volumeLabel").textContent=value+"%";
-};
-
-$("addSubtitle").onclick=()=>{
-  const text=$("subtitleText").value.trim();
-  const start=Number($("subtitleStart").value);
-  const end=Number($("subtitleEnd").value);
-  if(!text)return alert("Wpisz treść napisu.");
-  if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||end<=start)
-    return alert("Koniec musi być później niż początek.");
-  subtitles.push({
-    text,start,end,position:$("subtitlePosition").value
-  });
-  $("subtitleText").value="";
-  renderSubtitles();
-  updateCaption(currentElapsed);
-};
-
-function renderSubtitles(){
-  $("subtitleList").innerHTML="";
-  $("subtitleTrack").textContent=subtitles.length
-    ?subtitles.length+" napis(ów) dodanych."
-    :"Brak napisów.";
-  subtitles.forEach((s,i)=>{
-    const div=document.createElement("div");
-    div.className="clip";
-    const text=document.createElement("div");
-    text.textContent=(i+1)+". "+s.text+" ("+s.start+"–"+s.end+" s)";
-    const del=document.createElement("button");
-    del.textContent="USUŃ";
-    del.onclick=()=>{
-      subtitles.splice(i,1);
-      renderSubtitles();
-      updateCaption(currentElapsed);
-    };
-    div.append(text,del);
-    $("subtitleList").appendChild(div);
-  });
+video.addEventListener("timeupdate", () => {
+if (selected >= 0 && !playing) {
+currentElapsed = clipOffset(selected) + video.currentTime;
+updateCaption(currentElapsed);
 }
-
-function updateCaption(time){
-  const active=subtitles.find(s=>time>=s.start&&time<=s.end);
-  const caption=$("caption");
-  if(!active){caption.textContent="";return;}
-  caption.textContent=active.text;
-  caption.style.top=active.position==="top"?"10%":
-    active.position==="middle"?"45%":"";
-  caption.style.bottom=active.position==="bottom"?"12%":"";
-}
-
-video.addEventListener("timeupdate",()=>{
-  if(!playing)return;
-  const time=clipStartElapsed+video.currentTime;
-  currentElapsed=time;
-  updateCaption(time);
 });
 
-async function playSequence(){
-  if(!clips.length)return alert("Najpierw dodaj film lub zdjęcie.");
-  stopPlayback();
-  playing=true;
-  const token=playToken;
-  status("playStatus","Odtwarzanie montażu...");
-  currentElapsed=0;
-  if(audio.src){
-    audio.currentTime=0;
-    audio.volume=Number($("volumeInput").value)/100;
-    audio.play().catch(()=>{});
-  }
-  for(let i=0;i<clips.length;i++){
-    if(!playing||token!==playToken)break;
-    selected=i;
-    renderClips();
-    const clip=clips[i];
-    clipStartElapsed=currentElapsed;
-    selectClip(i);
-    if(clip.type==="video"){
-      try{
-        video.currentTime=0;
-        await video.play();
-      }catch(err){
-        status("playStatus","Nie można odtworzyć filmu. Sprawdź plik.");
-      }
-    }
-    const duration=Math.max(1,Number(clip.duration)||5);
-    const start=Date.now();
-    while(playing&&token===playToken&&Date.now()-start<duration*1000){
-      const elapsed=(Date.now()-start)/1000;
-      currentElapsed=clipStartElapsed+elapsed;
-      updateCaption(currentElapsed);
-      if(clip.type==="video"&&video.ended)break;
-      await new Promise(resolve=>setTimeout(resolve,100));
-    }
-    currentElapsed=clipStartElapsed+duration;
-    video.pause();
-  }
-  if(token===playToken){
-    playing=false;
-    audio.pause();
-    $("caption").textContent="";
-    status("playStatus","Montaż zakończony.");
-  }
+photo.addEventListener("load", () => {
+if (selected >= 0 && !playing) updateCaption(clipOffset(selected));
+});
+photo.addEventListener("error", () => status("playStatus", "Nie udało się wyświetlić tego zdjęcia."));
+
+$("applyDuration").onclick = () => {
+if (selected < 0) return alert("Najpierw wybierz scenę.");
+const value = Number($("durationInput").value);
+if (!Number.isFinite(value) || value < 1 || value > 600) return alert("Podaj długość od 1 do 600 sekund.");
+clips[selected].duration = value;
+renderClips();
+selectClip(selected);
+};
+
+$("deleteClip").onclick = () => {
+if (selected < 0) return alert("Nie wybrano sceny.");
+const removed = clips.splice(selected, 1)[0];
+URL.revokeObjectURL(removed.url);
+selected = -1;
+video.pause();
+video.removeAttribute("src");
+video.load();
+photo.removeAttribute("src");
+video.style.display = photo.style.display = "none";
+$("emptyPreview").style.display = "block";
+$("caption").textContent = "";
+status("selectedInfo", "Nie wybrano sceny.");
+renderClips();
+};
+
+function moveClip(direction) {
+if (selected < 0) return alert("Najpierw wybierz scenę.");
+const next = selected + direction;
+if (next < 0 || next >= clips.length) return;
+[clips[selected], clips[next]] = [clips[next], clips[selected]];
+selected = next;
+renderClips();
+selectClip(selected);
 }
-$("playAll").onclick=playSequence;
-$("stopAll").onclick=stopPlayback;
 
-$("autoMode").onclick=()=>{
-  mode="auto";
-  status("modeInfo","Tryb automatyczny: sceny odtwarzane po kolei.");
-};
-$("manualMode").onclick=()=>{
-  mode="manual";
-  status("modeInfo","Tryb ręczny: sam wybierasz sceny i ustawienia.");
-};
+$("moveLeft").onclick = () => moveClip(-1);
+$("moveRight").onclick = () => moveClip(1);
 
-$("saveProject").onclick=()=>{
-  const data={
-    name:$("projectName").value,
-    mode,
-    clips:clips.map(c=>({name:c.name,type:c.type,duration:c.duration})),
-    subtitles,
-    volume:$("volumeInput").value
-  };
-  try{
-    localStorage.setItem("darkEditor06",JSON.stringify(data));
-    status("saveStatus","Projekt zapisany w pamięci przeglądarki.");
-  }catch(e){
-    status("saveStatus","Nie udało się zapisać projektu.");
-  }
+$("audioInput").addEventListener("change", e => {
+const file = e.target.files?.[0];
+if (!file) return;
+if (audioUrl) URL.revokeObjectURL(audioUrl);
+audioUrl = URL.createObjectURL(file);
+audio.src = audioUrl;
+audio.load();
+audio.volume = Number($("volumeInput").value) / 100;
+status("audioStatus", `Dodano: ${file.name}`);
+$("audioTrack").textContent = file.name;
+e.target.value = "";
+});
+
+$("volumeInput").oninput = () => {
+const value = Number($("volumeInput").value);
+audio.volume = value / 100;
+$("volumeLabel").textContent = `${value}%`;
 };
 
-try{
-  const saved=localStorage.getItem("darkEditor06");
-  if(saved){
-    const data=JSON.parse(saved);
-    if(data.name)$("projectName").value=data.name;
-    if(data.volume){
-      $("volumeInput").value=data.volume;
-      $("volumeLabel").textContent=data.volume+"%";
-    }
-    if(Array.isArray(data.subtitles)){
-      subtitles=data.subtitles;
-      renderSubtitles();
-    }
-    if(data.mode){
-      mode=data.mode;
-      status("modeInfo","Ostatni tryb: "+mode+".");
-    }
-  }
-}catch(e){}
+$("addSubtitle").onclick = () => {
+const text = $("subtitleText").value.trim();
+const start = Number($("subtitleStart").value);
+const end = Number($("subtitleEnd").value);
+if (!text) return alert("Wpisz treść napisu.");
+if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) return alert("Koniec musi być później niż początek.");
+subtitles.push({ text, start, end, position: $("subtitlePosition").value });
+$("subtitleText").value = "";
+renderSubtitles();
+updateCaption(currentElapsed);
+};
 
+async function playSequence() {
+if (!clips.length) return alert("Najpierw dodaj film lub zdjęcie.");
+stopPlayback("Przygotowanie montażu...");
+playing = true;
+const token = playToken;
+currentElapsed = 0;
+status("playStatus", "Odtwarzanie montażu...");
+
+if (audio.src) {
+try {
+audio.currentTime = 0;
+audio.volume = Number($("volumeInput").value) / 100;
+await audio.play();
+} catch (_) {
+status("audioStatus", "Przeglądarka nie pozwoliła uruchomić audio.");
+}
+}
+
+for (let i = 0; i < clips.length; i++) {
+if (!playing || token !== playToken) break;
+selected = i;
+const clip = clips[i];
+clipStartElapsed = currentElapsed;
+showClip(clip);
+$("durationInput").value = clip.duration;
+status("selectedInfo", `Odtwarzana scena: ${clip.name} (${clip.duration} s)`);
+renderClips();
+const duration = safeDuration(clip.duration);
+const start = performance.now();
+
+if (clip.type === "video") {
+try {
+await waitForMetadata();
+video.currentTime = 0;
+await video.play();
+} catch (_) {
+status("playStatus", `Nie można odtworzyć: ${clip.name}. Pomijam scenę.`);
+}
+}
+
+while (playing && token === playToken && (performance.now() - start) < duration * 1000) {
+const elapsed = (performance.now() - start) / 1000;
+currentElapsed = clipStartElapsed + elapsed;
+updateCaption(currentElapsed);
+if (clip.type === "video" && (video.ended || (video.duration && video.currentTime >= video.duration))) break;
+await new Promise(resolve => setTimeout(resolve, 80));
+}
+currentElapsed = clipStartElapsed + duration;
+video.pause();
+}
+
+if (token === playToken) {
+playing = false;
+audio.pause();
+$("caption").textContent = "";
+status("playStatus", "Montaż zakończony.");
+}
+}
+
+$("playAll").onclick = playSequence;
+$("stopAll").onclick = () => stopPlayback();
+
+$("autoMode").onclick = () => {
+mode = "auto";
+status("modeInfo", "Tryb automatyczny: sceny odtwarzane po kolei.");
+};
+
+$("manualMode").onclick = () => {
+mode = "manual";
+status("modeInfo", "Tryb ręczny: sam wybierasz sceny i ustawienia.");
+};
+
+$("saveProject").onclick = () => {
+const data = {
+name: $("projectName").value,
+mode,
+clips: clips.map(c => ({ name: c.name, type: c.type, duration: c.duration })),
+subtitles,
+volume: $("volumeInput").value
+};
+try {
+localStorage.setItem("darkEditor06", JSON.stringify(data));
+status("saveStatus", "Projekt zapisany w pamięci przeglądarki. Pliki trzeba ponownie dodać po odświeżeniu.");
+} catch (_) {
+status("saveStatus", "Nie udało się zapisać projektu.");
+}
+};
+
+try {
+const saved = localStorage.getItem("darkEditor06");
+if (saved) {
+const data = JSON.parse(saved);
+if (data.name) $("projectName").value = data.name;
+if (data.volume !== undefined) {
+$("volumeInput").value = data.volume;
+$("volumeLabel").textContent = `${data.volume}%`;
+audio.volume = Number(data.volume) / 100;
+}
+if (Array.isArray(data.subtitles)) {
+subtitles = data.subtitles;
+renderSubtitles();
+}
+if (data.mode === "auto" || data.mode === "manual") {
+mode = data.mode;
+status("modeInfo", `Ostatni tryb: ${mode}.`);
+}
+}
+} catch (_) {
+status("saveStatus", "Nie udało się odczytać poprzedniego projektu.");
+}
+
+window.addEventListener("beforeunload", () => {
+clips.forEach(c => URL.revokeObjectURL(c.url));
+if (audioUrl) URL.revokeObjectURL(audioUrl);
+});
 })();
 </script>
 </body>

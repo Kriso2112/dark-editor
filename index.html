@@ -1,0 +1,166 @@
+
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#090909">
+<title>DARK EDITOR</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#090909;color:#eee;font-family:Arial,sans-serif}
+header{padding:22px 16px;text-align:center;border-bottom:1px solid #b58a32}
+h1{margin:0;color:#d6ad54;letter-spacing:4px}
+header p{color:#999;font-size:12px}
+main{padding:16px;max-width:750px;margin:auto}
+.panel{background:#171717;border:1px solid #393020;border-radius:12px;padding:16px;margin-bottom:15px}
+h2{color:#d6ad54;font-size:17px;margin-top:0}
+button,.upload{background:#25211a;color:#e5bd67;border:1px solid #a17a30;padding:12px;border-radius:8px;font-weight:bold;cursor:pointer}
+button.active{background:#b58a32;color:#111}
+.tabs{display:flex;gap:10px}
+.tabs button{flex:1}
+input,textarea{width:100%;background:#090909;color:white;border:1px solid #554323;border-radius:7px;padding:12px;margin:8px 0}
+#preview{width:100%;max-height:280px;background:#000;border-radius:8px;margin-top:12px}
+.scene{padding:12px;background:#222;border-radius:7px;margin:8px 0;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.scene button{padding:7px}
+.small{font-size:12px;color:#aaa}
+.gold{color:#d6ad54}
+#timeline{height:12px;background:#30291d;border-radius:10px;overflow:hidden}
+#progress{height:100%;width:0;background:#d6ad54}
+footer{text-align:center;color:#777;font-size:12px;padding:20px}
+</style>
+</head>
+<body>
+<header>
+<h1>DARK EDITOR</h1>
+<p>YOUR DARK CINEMA STUDIO</p>
+</header>
+<main>
+<div class="panel">
+<h2>WYBIERZ TRYB MONTAŻU</h2>
+<div class="tabs">
+<button id="auto" class="active" onclick="mode('auto')">AUTOMATYCZNY</button>
+<button id="manual" onclick="mode('manual')">RĘCZNY</button>
+</div>
+<p id="modeText" class="small">Dodaj materiały, a program pomoże Ci przygotować kolejność scen.</p>
+</div>
+
+<div class="panel">
+<h2>1. TWOJE MATERIAŁY</h2>
+<label class="upload">＋ Dodaj filmy i zdjęcia
+<input id="media" type="file" accept="video/*,image/*" multiple hidden>
+</label>
+<label class="upload">＋ Dodaj muzykę lub lektora
+<input id="audio" type="file" accept="audio/*" hidden>
+</label>
+<video id="preview" controls playsinline></video>
+<div id="fileInfo" class="small">Nie dodano jeszcze materiałów.</div>
+</div>
+
+<div class="panel">
+<h2>2. OŚ CZASU I SCENY</h2>
+<div id="scenes"><p class="small">Twoje sceny pojawią się tutaj.</p></div>
+<div id="timeline"><div id="progress"></div></div>
+<p class="small">Podgląd kolejności materiałów.</p>
+</div>
+
+<div class="panel">
+<h2>3. NAPISY DO FILMU</h2>
+<textarea id="caption" rows="3" placeholder="Wpisz tekst, który chcesz wyświetlić w filmie..."></textarea>
+<button onclick="addCaption()">＋ Dodaj napis</button>
+<div id="captions"></div>
+</div>
+
+<div class="panel">
+<h2>4. ZAPIS PROJEKTU</h2>
+<input id="projectName" value="Mój pierwszy projekt" placeholder="Nazwa projektu">
+<button onclick="saveProject()">ZAPISZ PROJEKT</button>
+<p id="saved" class="small">Projekt nie został jeszcze zapisany.</p>
+</div>
+</main>
+<footer>DARK EDITOR • WERSJA 0.3 • BLACK & GOLD</footer>
+
+<script>
+let files=[];
+let currentMode="auto";
+function mode(m){
+currentMode=m;
+document.getElementById("auto").classList.toggle("active",m==="auto");
+document.getElementById("manual").classList.toggle("active",m==="manual");
+document.getElementById("modeText").textContent=m==="auto"?
+"Tryb automatyczny: dodaj materiały i przygotuj kolejność scen.":
+"Tryb ręczny: samodzielnie zmieniaj kolejność swoich scen.";
+}
+document.getElementById("media").addEventListener("change",e=>{
+for(const f of e.target.files){
+files.push({file:f,name:f.name,url:URL.createObjectURL(f)});
+}
+render();
+});
+document.getElementById("audio").addEventListener("change",e=>{
+if(e.target.files[0]){
+document.getElementById("fileInfo").textContent="Dodano audio: "+e.target.files[0].name;
+}
+});
+function render(){
+const box=document.getElementById("scenes");
+box.innerHTML="";
+files.forEach((f,i)=>{
+const div=document.createElement("div");
+div.className="scene";
+const name=document.createElement("span");
+name.textContent=(i+1)+". "+f.name;
+const controls=document.createElement("span");
+const up=document.createElement("button");
+up.textContent="↑";
+up.onclick=()=>move(i,-1);
+const down=document.createElement("button");
+down.textContent="↓";
+down.onclick=()=>move(i,1);
+const view=document.createElement("button");
+view.textContent="▶";
+view.onclick=()=>show(i);
+controls.append(up,down,view);
+div.append(name,controls);
+box.append(div);
+});
+document.getElementById("fileInfo").textContent="Liczba materiałów: "+files.length;
+document.getElementById("progress").style.width=Math.min(files.length*10,100)+"%";
+if(files.length)show(0);
+}
+function move(i,d){
+let j=i+d;
+if(j<0||j>=files.length)return;
+[files[i],files[j]]=[files[j],files[i]];
+render();
+}
+function show(i){
+const f=files[i];
+const p=document.getElementById("preview");
+p.pause();
+p.src=f.url;
+p.poster="";
+if(f.file.type.startsWith("video"))p.load();
+}
+function addCaption(){
+const t=document.getElementById("caption").value.trim();
+if(!t)return;
+const p=document.createElement("p");
+p.className="gold";
+p.textContent="• "+t;
+document.getElementById("captions").append(p);
+document.getElementById("caption").value="";
+}
+function saveProject(){
+const data={
+name:document.getElementById("projectName").value,
+mode:currentMode,
+scenes:files.map(f=>f.name),
+date:new Date().toLocaleString()
+};
+localStorage.setItem("darkEditorProject",JSON.stringify(data));
+document.getElementById("saved").textContent="Zapisano ustawienia projektu na tym urządzeniu.";
+}
+</script>
+</body>
+</html>

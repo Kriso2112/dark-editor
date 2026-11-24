@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DARK EDITOR 0.9.0</title>
+<title>DARK EDITOR 1.0.0</title>
 <style>
 :root{--gold:#d6ad55;--bg:#090909;--panel:#171717;--line:#393021}
 *{box-sizing:border-box}
@@ -42,7 +42,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 
 <header>
 <h1>DARK EDITOR</h1>
-<p>BLACK & GOLD CINEMA STUDIO • VERSION 0.9.0</p>
+<p>BLACK & GOLD CINEMA STUDIO • VERSION 1.0.0</p>
 </header>
 
 <section>
@@ -127,12 +127,25 @@ Oddziel kolejne części pustą linią."></textarea>
 
 <section>
 <h2>7. MUZYKA I LEKTOR</h2>
-<label class="filebtn" for="audioInput">＋ DODAJ MUZYKĘ / LEKTORA</label>
+<div class="track">
+<strong>ŚCIEŻKA LEKTORA</strong>
+<label class="filebtn" for="voiceInput">＋ DODAJ LEKTORA</label>
+<input id="voiceInput" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg" class="hidden">
+<label>Głośność lektora: <span id="voiceVolumeLabel">100%</span></label>
+<input id="voiceVolumeInput" type="range" min="0" max="100" value="100">
+<audio id="voiceAudio" controls style="width:100%;margin-top:8px"></audio>
+<div id="voiceStatus" class="status">Nie dodano lektora.</div>
+</div>
+<div class="track">
+<strong>ŚCIEŻKA MUZYKI</strong>
+<label class="filebtn" for="audioInput">＋ DODAJ MUZYKĘ</label>
 <input id="audioInput" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg" class="hidden">
 <label>Głośność muzyki: <span id="volumeLabel">50%</span></label>
 <input id="volumeInput" type="range" min="0" max="100" value="50">
 <audio id="audio" controls style="width:100%;margin-top:8px"></audio>
-<div id="audioStatus" class="status">Nie dodano audio.</div>
+<div id="audioStatus" class="status">Nie dodano muzyki.</div>
+<p class="small">Podczas odtwarzania lektora muzyka automatycznie ścisza się do 20% ustawionego poziomu, a po lektorze wraca do poprzedniej głośności.</p>
+</div>
 </section>
 
 <section>
@@ -162,11 +175,11 @@ Oddziel kolejne części pustą linią."></textarea>
 <button id="loadProject">WCZYTAJ ZAPIS</button>
 </div>
 <div id="saveStatus" class="status">Projekt nie został zapisany.</div>
-<p class="small">Projekt zapisuje ustawienia, kolejność scen, napisy i głośność. Filmy i muzykę trzeba ponownie wybrać z galerii po ponownym otwarciu strony.</p>
-<p class="small warning">Po wczytaniu zapisu wybierz ponownie pliki z galerii. Edytor dopasuje je do zapisanych scen po nazwach.</p>
+<p class="small">Projekt zapisuje ustawienia, scenariusz, kolejność scen, napisy oraz pliki multimedialne w pamięci IndexedDB przeglądarki (jeśli jest dostępna).</p>
+<p class="small warning">Jeśli przeglądarka lub system usunie dane witryny albo zabraknie miejsca, pliki mogą wymagać ponownego wskazania. Pobieranie projektu do pliku kopii zapasowej dodamy jako osobne zabezpieczenie.</p>
 </section>
 
-<footer>DARK EDITOR 0.9.0 • BLACK & GOLD</footer>
+<footer>DARK EDITOR 1.0.0 • BLACK & GOLD</footer>
 
 <script>
 (() => {
@@ -176,6 +189,7 @@ const $ = id => document.getElementById(id);
 const video = $("video");
 const photo = $("photo");
 const audio = $("audio");
+const voiceAudio = $("voiceAudio");
 
 const STORAGE_KEY = "darkEditor090";
 const OLD_KEYS = ["darkEditor080","darkEditor072","darkEditor071","darkEditor07","darkEditor06"];
@@ -185,6 +199,12 @@ let subtitles = [];
 let selected = -1;
 let audioUrl = null;
 let audioName = "";
+let audioBlob = null;
+let voiceUrl = null;
+let voiceName = "";
+let voiceBlob = null;
+let dbPromise = null;
+let persistQueue = Promise.resolve();
 let playing = false;
 let playToken = 0;
 let pendingClipIndex = null;
@@ -196,6 +216,67 @@ let scriptText = "";
 const status = (id,text) => {
   $(id).textContent = text;
 };
+
+const DB_NAME = "DARK_EDITOR_PROJECTS";
+const DB_STORE = "projects";
+
+function openProjectDB() {
+  if (!("indexedDB" in window)) return Promise.resolve(null);
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise(resolve => {
+    let request;
+    try { request = indexedDB.open(DB_NAME,1); }
+    catch (_) { resolve(null); return; }
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE,{keyPath:"id"});
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+  return dbPromise;
+}
+
+function makeProjectRecord() {
+  return {
+    id:STORAGE_KEY,
+    data:projectData(),
+    clipBlobs:clips.map(c=>c.blob instanceof Blob?c.blob:null),
+    musicBlob:audioBlob instanceof Blob?audioBlob:null,
+    voiceBlob:voiceBlob instanceof Blob?voiceBlob:null
+  };
+}
+
+function persistToIndexedDB() {
+  return openProjectDB().then(db => {
+    if (!db) return false;
+    return new Promise(resolve => {
+      try {
+        const tx=db.transaction(DB_STORE,"readwrite");
+        tx.objectStore(DB_STORE).put(makeProjectRecord());
+        tx.oncomplete=()=>resolve(true);
+        tx.onerror=()=>resolve(false);
+        tx.onabort=()=>resolve(false);
+      } catch (_) { resolve(false); }
+    });
+  });
+}
+
+function queueProjectSave() {
+  persistQueue=persistQueue.catch(()=>{}).then(()=>persistToIndexedDB());
+  return persistQueue;
+}
+
+function createMediaUrl(blob) {
+  return blob instanceof Blob ? URL.createObjectURL(blob) : null;
+}
+
+function updateMusicDucking() {
+  const base=Math.max(0,Math.min(100,Number($("volumeInput").value)||0))/100;
+  const voiceActive=voiceAudio && !voiceAudio.paused && !voiceAudio.ended;
+  audio.volume=base*(voiceActive?0.2:1);
+}
 
 const safeDuration = value =>
   Math.max(1,Math.min(600,Number(value)||5));
@@ -210,6 +291,8 @@ function stopPlayback(message="Odtwarzanie zatrzymane.") {
   playToken++;
   video.pause();
   audio.pause();
+  voiceAudio.pause();
+  updateMusicDucking();
   $("caption").textContent = "";
   status("playStatus",message);
 }
@@ -435,7 +518,7 @@ $("scriptInput").addEventListener("input",()=>{
 
 function projectData() {
   return {
-    version:"0.9.0",
+    version:"1.0.0",
     name:$("projectName").value,
     mode,
     clips:clips.map(c=>({
@@ -447,14 +530,22 @@ function projectData() {
     scriptText:$("scriptInput").value,
     storyboard,
     volume:$("volumeInput").value,
-    audioName
+    audioName,
+    musicName:audioName,
+    voiceName,
+    voiceVolume:$("voiceVolumeInput").value
   };
 }
 
 function saveSilently() {
   try {
     localStorage.setItem(STORAGE_KEY,JSON.stringify(projectData()));
-  } catch (_) {}
+  } catch (_) {
+    status("saveStatus","Nie udało się zapisać ustawień w pamięci przeglądarki.");
+  }
+  queueProjectSave().then(ok=>{
+    if (!ok) status("saveStatus","Zapis ustawień wykonany. Pamięć plików IndexedDB jest niedostępna — multimedia mogą wymagać ponownego wskazania.");
+  });
 }
 
 function addMediaFiles(fileList) {
@@ -487,8 +578,9 @@ function addMediaFiles(fileList) {
       if (existing.url) URL.revokeObjectURL(existing.url);
       existing.url=url;
       existing.name=file.name;
+      existing.blob=file;
     } else {
-      clips.push({name:file.name,type,url,duration:5});
+      clips.push({name:file.name,type,url,duration:5,blob:file});
     }
     added++;
   });
@@ -625,21 +717,48 @@ $("audioInput").addEventListener("change",e=>{
   if (audioUrl) URL.revokeObjectURL(audioUrl);
 
   audioUrl=URL.createObjectURL(file);
+  audioBlob=file;
   audioName=file.name;
   audio.src=audioUrl;
   audio.load();
-  audio.volume=Number($("volumeInput").value)/100;
+  updateMusicDucking();
 
-  status("audioStatus",`Dodano: ${file.name}`);
+  status("audioStatus",`Dodano muzykę: ${file.name}`);
   $("audioTrack").textContent=file.name;
 
   saveSilently();
   e.target.value="";
 });
 
+$("voiceInput").addEventListener("change",e=>{
+  const file=e.target.files&&e.target.files[0];
+  if (!file) return;
+  if (voiceUrl) URL.revokeObjectURL(voiceUrl);
+  voiceUrl=URL.createObjectURL(file);
+  voiceBlob=file;
+  voiceName=file.name;
+  voiceAudio.src=voiceUrl;
+  voiceAudio.load();
+  voiceAudio.volume=Number($("voiceVolumeInput").value)/100;
+  status("voiceStatus",`Dodano lektora: ${file.name}`);
+  saveSilently();
+  e.target.value="";
+});
+
+$("voiceVolumeInput").oninput=()=>{
+  const value=Number($("voiceVolumeInput").value);
+  voiceAudio.volume=value/100;
+  $("voiceVolumeLabel").textContent=`${value}%`;
+  saveSilently();
+};
+
+voiceAudio.addEventListener("play",updateMusicDucking);
+voiceAudio.addEventListener("pause",updateMusicDucking);
+voiceAudio.addEventListener("ended",updateMusicDucking);
+
 $("volumeInput").oninput=()=>{
   const value=Number($("volumeInput").value);
-  audio.volume=value/100;
+  updateMusicDucking();
   $("volumeLabel").textContent=`${value}%`;
   saveSilently();
 };
@@ -728,8 +847,13 @@ async function playSequence() {
 
   if (audio.src) {
     audio.currentTime=0;
-    audio.volume=Number($("volumeInput").value)/100;
+    updateMusicDucking();
     audio.play().catch(()=>{});
+  }
+  if (voiceAudio.src) {
+    voiceAudio.currentTime=0;
+    voiceAudio.volume=Number($("voiceVolumeInput").value)/100;
+    voiceAudio.play().catch(()=>{});
   }
 
   for (let i=0;i<clips.length;i++) {
@@ -788,6 +912,8 @@ async function playSequence() {
     playing=false;
     video.pause();
     audio.pause();
+    voiceAudio.pause();
+    updateMusicDucking();
     $("caption").textContent="";
     status("playStatus","Montaż zakończony.");
   }
@@ -808,16 +934,19 @@ $("manualMode").onclick=()=>{
   saveSilently();
 };
 
-$("saveProject").onclick=()=>{
+$("saveProject").onclick=async()=>{
   try {
     localStorage.setItem(STORAGE_KEY,JSON.stringify(projectData()));
-    status("saveStatus","Projekt 0.9.0 zapisany w pamięci przeglądarki.");
+    const stored=await queueProjectSave();
+    status("saveStatus",stored
+      ?"Projekt 1.0.0 zapisany razem z dostępnymi plikami multimedialnymi."
+      :"Zapisano ustawienia. Nie udało się trwale zapisać plików — sprawdź wolne miejsce i uprawnienia przeglądarki.");
   } catch (_) {
-    status("saveStatus","Nie udało się zapisać projektu.");
+    status("saveStatus","Nie udało się zapisać projektu. Sprawdź wolne miejsce w telefonie.");
   }
 };
 
-function restoreProject(data) {
+function restoreProject(data,record=null) {
   if (!data||!Array.isArray(data.clips)) {
     throw new Error("Nieprawidłowy zapis projektu.");
   }
@@ -828,11 +957,12 @@ function restoreProject(data) {
     if (c.url) URL.revokeObjectURL(c.url);
   });
 
-  clips=data.clips.map(c=>({
+  clips=data.clips.map((c,index)=>({
     name:String(c.name||"Nieznany plik"),
     type:c.type==="image"?"image":"video",
     duration:safeDuration(c.duration),
-    url:null
+    url:createMediaUrl(record&&record.clipBlobs?record.clipBlobs[index]:null),
+    blob:record&&record.clipBlobs?record.clipBlobs[index]||null:null
   }));
 
   selected=-1;
@@ -857,23 +987,35 @@ function restoreProject(data) {
 
   $("projectName").value=data.name||"Mój projekt";
 
-  const volume=Math.max(0,Math.min(100,Number(data.volume)||0));
+  const volume=Math.max(0,Math.min(100,Number(data.volume??50)));
   $("volumeInput").value=volume;
   $("volumeLabel").textContent=`${volume}%`;
-  audio.volume=volume/100;
-
-  if (audioUrl) {
-    URL.revokeObjectURL(audioUrl);
-    audioUrl=null;
-  }
-
+  if (audioUrl) URL.revokeObjectURL(audioUrl);
+  audioUrl=createMediaUrl(record&&record.musicBlob);
+  audioBlob=record&&record.musicBlob||null;
   audio.removeAttribute("src");
+  if (audioUrl) audio.src=audioUrl;
   audio.load();
-  audioName=String(data.audioName||"");
+  audioName=String(data.musicName||data.audioName||"");
   $("audioTrack").textContent=audioName||"Brak muzyki.";
   status("audioStatus",audioName
-    ?"Muzykę trzeba ponownie wybrać z galerii."
-    :"Nie dodano audio.");
+    ?(audioUrl?"Muzyka przywrócona z pamięci.":"Muzykę trzeba ponownie wybrać z galerii.")
+    :"Nie dodano muzyki.");
+
+  const voiceVolume=Math.max(0,Math.min(100,Number(data.voiceVolume??100)));
+  $("voiceVolumeInput").value=voiceVolume;
+  $("voiceVolumeLabel").textContent=`${voiceVolume}%`;
+  if (voiceUrl) URL.revokeObjectURL(voiceUrl);
+  voiceUrl=createMediaUrl(record&&record.voiceBlob);
+  voiceBlob=record&&record.voiceBlob||null;
+  voiceAudio.removeAttribute("src");
+  if (voiceUrl) voiceAudio.src=voiceUrl;
+  voiceAudio.load();
+  voiceName=String(data.voiceName||"");
+  status("voiceStatus",voiceName
+    ?(voiceUrl?"Lektor przywrócony z pamięci.":"Lektora trzeba ponownie wybrać z galerii.")
+    :"Nie dodano lektora.");
+  updateMusicDucking();
 
   showEmpty();
   $("caption").textContent="";
@@ -887,46 +1029,52 @@ function restoreProject(data) {
     "Wczytano projekt. Teraz ponownie wybierz pliki z galerii.");
 }
 
-$("loadProject").onclick=()=>{
+async function loadSavedProject(showMessage=true) {
   try {
-    let saved=localStorage.getItem(STORAGE_KEY);
+    const db=await openProjectDB();
+    let record=null;
+    if (db) {
+      record=await new Promise(resolve=>{
+        try {
+          const request=db.transaction(DB_STORE,"readonly").objectStore(DB_STORE).get(STORAGE_KEY);
+          request.onsuccess=()=>resolve(request.result||null);
+          request.onerror=()=>resolve(null);
+        } catch (_) { resolve(null); }
+      });
+    }
+    if (record&&record.data) {
+      restoreProject(record.data,record);
+      if (showMessage) status("saveStatus","Projekt 1.0.0 i zapisane multimedia przywrócone.");
+      return true;
+    }
 
+    let saved=localStorage.getItem(STORAGE_KEY);
     if (!saved) {
       for (const key of OLD_KEYS) {
         saved=localStorage.getItem(key);
         if (saved) break;
       }
     }
-
-    if (!saved) {
-      return alert("Nie znaleziono zapisanego projektu.");
-    }
-
+    if (!saved) return false;
     restoreProject(JSON.parse(saved));
+    if (showMessage) status("saveStatus","Wczytano ustawienia. Wybierz ponownie multimedia — ten starszy zapis nie zawiera plików.");
+    return true;
   } catch (e) {
-    alert("Nie udało się wczytać projektu: "+e.message);
+    if (showMessage) alert("Nie udało się wczytać projektu: "+e.message);
+    return false;
   }
+}
+
+$("loadProject").onclick=async()=>{
+  const loaded=await loadSavedProject(true);
+  if (!loaded) alert("Nie znaleziono zapisanego projektu.");
 };
 
 $("projectName").addEventListener("change",saveSilently);
 
-try {
-  let saved=localStorage.getItem(STORAGE_KEY);
-
-  if (!saved) {
-    for (const key of OLD_KEYS) {
-      saved=localStorage.getItem(key);
-      if (saved) break;
-    }
-  }
-
-  if (saved) {
-    const data=JSON.parse(saved);
-    restoreProject(data);
-  }
-} catch (_) {
-  status("saveStatus","Nie udało się odczytać poprzedniego zapisu.");
-}
+loadSavedProject(false).then(loaded=>{
+  if (!loaded) status("saveStatus","Brak zapisanego projektu. Możesz rozpocząć nowy montaż.");
+});
 
 })();
 </script>

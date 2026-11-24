@@ -43,6 +43,8 @@ Audyt był wyłącznie odczytowy. Nie uruchomiono generowania, eksportu w chmurz
 
 ## Rekomendacja techniczna dla DARK EDITOR
 
+Przeglądarka użytkownika zgłasza Chrome na Androidzie w wersji 157. Tabele zgodności wskazują WebCodecs/VideoEncoder jako obsługiwane w Chrome Android 157, ale dostępność konkretnego kodeka i sprzętowego enkodera zależy od urządzenia. WebCodecs nie odczytuje ani nie zapisuje samodzielnie kontenerów MP4 — potrzebny jest osobny muxer/demuxer. Dlatego dodano stronę diagnostyczną `diagnostics/export-check.html`, która lokalnie sprawdza dostępność API i konfiguracje H.264/AAC; nie wykonuje renderu.
+
 1. Nie zmieniać obecnego edytora ani nie zastępować go inną aplikacją.
 2. Zachować manifest projektu i obecny ręczny montaż.
 3. Dodać osobny moduł eksportu lokalnego. Najpierw sprawdzić dostępność WebCodecs; jeśli nie działa, użyć kontrolowanego fallbacku FFmpeg.wasm single-thread.
@@ -53,6 +55,8 @@ Audyt był wyłącznie odczytowy. Nie uruchomiono generowania, eksportu w chmurz
 
 ## Kolejność kolejnych prac
 
+- [x] Dodać bezpłatną stronę diagnostyczną WebCodecs/MediaRecorder: `diagnostics/export-check.html`.
+- [ ] Użytkownik uruchamia test na swoim telefonie i odsyła wynik.
 - [ ] Test kompatybilności WebCodecs w Android Chrome.
 - [ ] Dodać testowy renderer lokalny, bez płatnych API.
 - [ ] Przetestować MP4 720p na krótkim materiale.
@@ -62,6 +66,8 @@ Audyt był wyłącznie odczytowy. Nie uruchomiono generowania, eksportu w chmurz
 
 ## Źródła sprawdzone
 
+- WebCodecs (MDN): https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API
+- WebCodecs compatibility: https://caniuse.com/webcodecs
 - FFmpeg.wasm: https://github.com/ffmpegwasm/ffmpeg.wasm
 - Reframe: https://github.com/reframe-oss/reframe
 - FreeCut: https://github.com/walterlow/freecut

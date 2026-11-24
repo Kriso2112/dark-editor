@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DARK EDITOR — test eksportu</title>
+<style>
+:root{color-scheme:dark;--gold:#d6ad55;--bg:#090909;--panel:#171717}
+*{box-sizing:border-box}
+body{margin:0;padding:16px;background:var(--bg);color:#eee;font:15px Arial,sans-serif}
+main{max-width:720px;margin:auto}
+header{border-bottom:1px solid var(--gold);padding:12px 0 18px}
+h1,h2{color:var(--gold)}h1{letter-spacing:2px;font-size:23px}
+section{background:var(--panel);border:1px solid #49391f;border-radius:12px;padding:14px;margin:14px 0}
+button{background:#2b2418;color:var(--gold);border:1px solid var(--gold);padding:12px 16px;border-radius:8px;font-weight:bold}
+.item{padding:10px 0;border-bottom:1px solid #393021}.item:last-child{border:0}
+.value{color:#ddd;display:block;margin-top:5px;overflow-wrap:anywhere}
+.ok{color:#8ed49b}.warn{color:#e6bd70}.bad{color:#f18c83}
+small{color:#aaa;line-height:1.5}
+</style>
+</head>
+<body><main>
+<header><h1>DARK EDITOR</h1><div>DIAGNOSTYKA EKSPORTU • BEZPŁATNY TEST</div></header>
+<section>
+<h2>Sprawdzenie telefonu i przeglądarki</h2>
+<p>Ten test niczego nie generuje, nie wysyła plików i nie pobiera bibliotek. Sprawdza tylko dostępność funkcji przeglądarki.</p>
+<button id="run">URUCHOM TEST</button>
+<div id="results" aria-live="polite"></div>
+</section>
+<section><h2>Ważne</h2><small>Obsługa API nie gwarantuje, że dany kodek działa na konkretnym telefonie ani że długi render się powiedzie. Test konfiguracji kodeka to tylko wstępna kontrola. Następny etap będzie krótkim testem rzeczywistego eksportu MP4.</small></section>
+</main>
+<script>
+"use strict";
+const out=document.getElementById("results");
+function add(name,value,kind="warn"){const d=document.createElement("div");d.className="item";const b=document.createElement("strong");b.textContent=name;const s=document.createElement("span");s.className="value "+kind;s.textContent=value;d.append(b,s);out.append(d)}
+async function run(){
+ out.textContent="";
+ const ua=navigator.userAgent||"nieznana";
+ add("Przeglądarka",ua);
+ add("Urządzenie / pamięć", "deviceMemory" in navigator ? navigator.deviceMemory+" GB (wartość orientacyjna)" : "brak odczytu pamięci");
+ add("Rdzenie logiczne",navigator.hardwareConcurrency ? String(navigator.hardwareConcurrency) : "brak odczytu");
+ add("WebCodecs VideoEncoder",typeof VideoEncoder==="function"?"dostępny":"niedostępny",typeof VideoEncoder==="function"?"ok":"bad");
+ add("WebCodecs AudioEncoder",typeof AudioEncoder==="function"?"dostępny":"niedostępny",typeof AudioEncoder==="function"?"ok":"bad");
+ add("MediaRecorder",typeof MediaRecorder==="function"?"dostępny":"niedostępny",typeof MediaRecorder==="function"?"ok":"bad");
+ if(typeof MediaRecorder==="function"){
+  const types=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9,opus","video/webm"];
+  for(const t of types)add("MediaRecorder: "+t,MediaRecorder.isTypeSupported(t)?"obsługiwany":"niepotwierdzony",MediaRecorder.isTypeSupported(t)?"ok":"warn");
+ }
+ if(typeof VideoEncoder==="function" && VideoEncoder.isConfigSupported){
+  try{const r=await VideoEncoder.isConfigSupported({codec:"avc1.42001E",width:1280,height:720,bitrate:2500000,framerate:30});add("H.264 720p / 30 fps",r.supported?"konfiguracja obsługiwana":"konfiguracja nieobsługiwana",r.supported?"ok":"bad");}
+  catch(e){add("H.264 720p / 30 fps","błąd sprawdzania: "+e.message,"bad")}
+  try{const r=await VideoEncoder.isConfigSupported({codec:"vp09.00.10.08",width:1280,height:720,bitrate:2500000,framerate:30});add("VP9 720p / 30 fps",r.supported?"konfiguracja obsługiwana":"konfiguracja nieobsługiwana",r.supported?"ok":"warn");}
+  catch(e){add("VP9 720p / 30 fps","błąd sprawdzania: "+e.message,"warn")}
+ }
+ if(typeof AudioEncoder==="function" && AudioEncoder.isConfigSupported){
+  try{const r=await AudioEncoder.isConfigSupported({codec:"mp4a.40.2",sampleRate:48000,numberOfChannels:2,bitrate:128000});add("AAC audio",r.supported?"konfiguracja obsługiwana":"konfiguracja nieobsługiwana",r.supported?"ok":"warn");}
+  catch(e){add("AAC audio","błąd sprawdzania: "+e.message,"warn")}
+ }
+ add("Wynik","Zapisz zrzut ekranu i prześlij go w rozmowie. Nie zawiera danych osobowych poza informacją o przeglądarce.","ok");
+}
+document.getElementById("run").addEventListener("click",run);
+</script>
+</body></html>

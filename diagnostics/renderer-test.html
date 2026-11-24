@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#090909"><title>DARK EDITOR — test renderera</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;padding:18px;background:#090909;color:#f4efe5;font:16px/1.5 system-ui,Arial}main{max-width:700px;margin:auto}h1,h2{color:#e0b85c}section{background:#171717;border:1px solid #594525;border-radius:14px;padding:16px;margin:16px 0}label{display:block;margin:12px 0 5px;color:#e0b85c}input,select{width:100%;padding:12px;border-radius:8px;background:#252525;color:#fff;border:1px solid #66522f}button{width:100%;padding:15px;margin-top:14px;border-radius:9px;background:#2c2418;color:#e0b85c;border:1px solid #e0b85c;font-weight:800;font-size:16px}button:disabled{opacity:.5}progress{width:100%;height:18px}#status{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:12px}.ok{color:#91dfa0}.err{color:#ff938b}video{width:100%;margin-top:12px;background:#000}a{display:block;color:#e0b85c;margin-top:12px}.hint{font-size:13px;color:#aaa}
+</style></head><body><main>
+<h1>DARK EDITOR</h1><p>TEST EKSPERYMENTALNEGO RENDERERA LOKALNEGO</p>
+<section><h2>Materiały testowe</h2>
+<p class="hint">Pliki są używane lokalnie w tej karcie. Nic nie jest wysyłane na serwer. Zacznij od jednego krótkiego zdjęcia lub filmu.</p>
+<label for="media">Zdjęcie albo film</label><input id="media" type="file" accept="image/*,video/*">
+<label for="audio">Opcjonalna muzyka / lektor</label><input id="audio" type="file" accept="audio/*">
+<label for="subtitle">Tekst napisu (opcjonalnie)</label><input id="subtitle" maxlength="120" placeholder="Przykładowy napis">
+<label for="duration">Długość sceny w sekundach</label><select id="duration"><option value="3">3 sekundy</option><option value="5" selected>5 sekund</option><option value="8">8 sekund</option>
+</select><label for="quality">Jakość</label><select id="quality"><option value="640">Test 640 × 360 (zalecane)</option><option value="1280" selected>HD 1280 × 720</option></select>
+<button id="run">URUCHOM TEST RENDERERA</button><progress id="progress" max="1" value="0"></progress><div id="status">Wybierz jeden plik zdjęcia lub filmu.</div><video id="preview" controls playsinline hidden></video><a id="save" hidden>POBIERZ WYRENDEROWANY MP4</a>
+</section>
+<section><h2>Ważne</h2><p class="hint">To osobny test modułu, nie główny edytor. Render działa w czasie rzeczywistym. Nie blokuj ekranu. Na telefonie z 4 GB RAM nie testuj długich filmów. Jeśli coś pójdzie nie tak, zamknij kartę — aplikacja DARK EDITOR 0.9.0 pozostaje nietknięta.</p></section>
+</main>
+<script src="../js/local-renderer.js"></script>
+<script>
+(()=>{const media=document.getElementById("media"),audio=document.getElementById("audio"),run=document.getElementById("run"),status=document.getElementById("status"),progress=document.getElementById("progress"),preview=document.getElementById("preview"),save=document.getElementById("save");let urls=[];
+function clearUrls(){urls.forEach(URL.revokeObjectURL);urls=[];}
+run.addEventListener("click",async()=>{if(!media.files||!media.files[0]){status.textContent="Najpierw wybierz zdjęcie albo film.";return;}run.disabled=true;preview.hidden=true;save.hidden=true;progress.value=0;clearUrls();let cancel=null;
+try{const file=media.files[0],url=URL.createObjectURL(file);urls.push(url);const isImage=file.type.startsWith("image/");const secs=Number(document.getElementById("duration").value);const w=Number(document.getElementById("quality").value);let audioElement=null;if(audio.files&&audio.files[0]){audioElement=new Audio();audioElement.src=URL.createObjectURL(audio.files[0]);audioElement.preload="auto";urls.push(audioElement.src);}
+const text=document.getElementById("subtitle").value.trim();status.textContent="Renderowanie trwa. Pozostaw kartę otwartą.";const result=await DarkLocalRenderer.render({clips:[{url,type:isImage?"image":"video",duration:secs}],subtitles:text?[{text,start:0,end:secs,position:"bottom"}]:[],audioElement,width:w,height:Math.round(w*9/16),fps:30,onProgress:p=>{progress.value=p.fraction;status.textContent="Renderowanie: "+Math.round(p.fraction*100)+"%";cancel=p.cancel;}});const out=URL.createObjectURL(result.blob);urls.push(out);preview.src=out;preview.hidden=false;save.href=out;save.download="dark-editor-renderer-test.mp4";save.hidden=false;status.className="ok";status.textContent="SUKCES: MP4 utworzony ("+(result.blob.size/1024).toFixed(0)+" KB). Odtwórz podgląd i pobierz plik.";progress.value=1;
+}catch(e){status.className="err";status.textContent="BŁĄD: "+(e&&e.message?e.message:String(e));}finally{run.disabled=false;}});
+})();
+</script></body></html>

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DARK EDITOR — test eksportu 2</title>
+<style>
+:root{color-scheme:dark;--gold:#d6ad55;--bg:#090909;--panel:#171717}
+*{box-sizing:border-box}body{margin:0;padding:16px;background:var(--bg);color:#eee;font:15px Arial,sans-serif}
+main{max-width:760px;margin:auto}header{border-bottom:1px solid var(--gold);padding:12px 0 18px}
+h1,h2{color:var(--gold)}h1{letter-spacing:2px;font-size:23px}
+section{background:var(--panel);border:1px solid #49391f;border-radius:12px;padding:14px;margin:14px 0}
+button{background:#2b2418;color:var(--gold);border:1px solid var(--gold);padding:12px 16px;border-radius:8px;font-weight:bold}
+button:disabled{opacity:.45}.item{padding:10px 0;border-bottom:1px solid #393021}.item:last-child{border:0}
+.value{color:#ddd;display:block;margin-top:5px;overflow-wrap:anywhere}.ok{color:#8ed49b}.warn{color:#e6bd70}.bad{color:#f18c83}
+small{color:#aaa;line-height:1.5}canvas{width:100%;max-width:320px;background:#000;border-radius:8px}
+</style>
+</head>
+<body><main>
+<header><h1>DARK EDITOR</h1><div>DIAGNOSTYKA EKSPORTU • TEST RZECZYWISTEGO KODOWANIA</div></header>
+<section>
+<h2>Test telefonu</h2>
+<p>Test działa lokalnie. Nie wysyła plików, nie łączy się z usługami AI, niczego nie kupuje i nie zużywa kredytów. Wykona krótką próbę kodowania wideo w pamięci przeglądarki.</p>
+<button id="run">URUCHOM PEŁNY TEST</button>
+<div id="results" aria-live="polite"></div>
+</section>
+<section>
+<h2>Podgląd testowy</h2>
+<canvas id="canvas" width="320" height="180"></canvas>
+<p><small>Krótka animacja testowa generowana na urządzeniu. Nie jest zapisywana ani wysyłana.</small></p>
+</section>
+<section><h2>Ważne</h2><small>Udane kodowanie krótkiego klipu nie gwarantuje bezproblemowego eksportu długiego filmu. Test nie mierzy jeszcze pełnej wydajności 10-minutowego montażu. Wynik pozwoli nam wybrać właściwy silnik i format.</small></section>
+</main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const out=$("results"), canvas=$("canvas"), ctx=canvas.getContext("2d");
+function add(name,value,kind="warn"){const d=document.createElement("div");d.className="item";const b=document.createElement("strong");b.textContent=name;const s=document.createElement("span");s.className="value "+kind;s.textContent=value;d.append(b,s);out.append(d)}
+function paint(i){ctx.fillStyle="#090909";ctx.fillRect(0,0,320,180);ctx.fillStyle="#d6ad55";ctx.font="bold 18px Arial";ctx.fillText("DARK EDITOR TEST",18,42);ctx.fillStyle="#eee";ctx.font="14px Arial";ctx.fillText("Kodowanie klatki "+i,18,75);ctx.fillRect((i*7)%280,110,40,12)}
+async function testVideoEncoder(){
+ if(typeof VideoEncoder!=="function")throw new Error("VideoEncoder niedostępny");
+ const configs=[
+  {codec:"avc1.42001E",width:320,height:180,bitrate:500000,framerate:15},
+  {codec:"vp09.00.10.08",width:320,height:180,bitrate:500000,framerate:15}
+ ];
+ let selected=null;
+ for(const c of configs){try{const r=await VideoEncoder.isConfigSupported(c);if(r.supported){selected=r.config||c;break}}catch(e){}}
+ if(!selected)throw new Error("Brak obsługiwanej konfiguracji H.264 i VP9");
+ let bytes=0,chunks=0;
+ const enc=new VideoEncoder({output(chunk){bytes+=chunk.byteLength;chunks++},error(e){throw e}});
+ try{
+  enc.configure(selected);
+  for(let i=0;i<30;i++){
+   paint(i);
+   const frame=new VideoFrame(canvas,{timestamp:i*66667});
+   enc.encode(frame,{keyFrame:i===0});
+   frame.close();
+   if(enc.encodeQueueSize>4)await new Promise(r=>setTimeout(r,20));
+  }
+  await enc.flush();
+  const state=enc.state;
+  if(chunks===0||bytes===0)throw new Error("Enkoder nie zwrócił danych");
+  return {codec:selected.codec,chunks,bytes,state};
+ }finally{if(enc.state!=="closed")enc.close()}
+}
+async function testRecorder(){
+ if(typeof MediaRecorder!=="function")throw new Error("MediaRecorder niedostępny");
+ if(typeof canvas.captureStream!=="function")throw new Error("canvas.captureStream niedostępny");
+ const types=["video/mp4;codecs=avc1","video/mp4","video/webm;codecs=vp9","video/webm"];
+ const mime=types.find(t=>MediaRecorder.isTypeSupported(t));
+ if(!mime)throw new Error("Brak obsługiwanego formatu MP4/WebM przez MediaRecorder");
+ const stream=canvas.captureStream(10), chunks=[];
+ let recorder;
+ try{
+  recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:500000});
+  const finished=new Promise((resolve,reject)=>{
+   recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+   recorder.onerror=e=>reject(e.error||new Error("Błąd MediaRecorder"));
+   recorder.onstop=()=>resolve();
+  });
+  recorder.start();
+  for(let i=0;i<15;i++){paint(i);await new Promise(r=>setTimeout(r,100))}
+  recorder.stop();
+  await Promise.race([finished,new Promise((_,reject)=>setTimeout(()=>reject(new Error("Przekroczono limit czasu testu")),8000))]);
+  const blob=new Blob(chunks,{type:recorder.mimeType||mime});
+  if(!blob.size)throw new Error("Pusty plik testowy");
+  return {mime:blob.type,size:blob.size};
+ }finally{if(recorder&&recorder.state!=="inactive")recorder.stop();stream.getTracks().forEach(t=>t.stop())}
+}
+async function run(){
+ $("run").disabled=true;out.textContent="";
+ add("Przeglądarka",navigator.userAgent);
+ add("Pamięć urządzenia","deviceMemory" in navigator?navigator.deviceMemory+" GB (orientacyjnie)":"brak odczytu");
+ add("Rdzenie logiczne",navigator.hardwareConcurrency?String(navigator.hardwareConcurrency):"brak odczytu");
+ try{const r=await testVideoEncoder();add("RZECZYWISTE KODOWANIE WIDEO","SUKCES • "+r.codec+" • "+r.chunks+" klatek • "+r.bytes+" bajtów","ok")}
+ catch(e){add("RZECZYWISTE KODOWANIE WIDEO","NIEPOWODZENIE • "+(e.message||String(e)),"bad")}
+ try{const r=await testRecorder();add("NAGRANIE TESTOWE","SUKCES • "+r.mime+" • "+r.size+" bajtów","ok")}
+ catch(e){add("NAGRANIE TESTOWE","NIEPOWODZENIE • "+(e.message||String(e)),"bad")}
+ add("Następny krok","Zrób zrzut ekranu wyników i wyślij go tutaj. Test nie zapisuje ani nie wysyła Twoich plików.","ok");
+ $("run").disabled=false;
+}
+$("run").addEventListener("click",run);
+</script>
+</body></html>

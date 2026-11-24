@@ -17,9 +17,9 @@ Załaduj plik jako skrypt, a następnie wywołaj po świadomym kliknięciu użyt
 - Wersja eksperymentalna; nie jest jeszcze podłączona do głównego interfejsu.
 - Wymaga ponownego wskazania lokalnych plików po wczytaniu projektu.
 - MP4 jest wymagane; brak cichego przejścia na WebM.
-- Audio przechwytuje element HTMLAudioElement tylko wtedy, gdy captureStream() jest dostępne.
+- Audio przechwytuje element HTMLAudioElement tylko wtedy, gdy captureStream() jest dostępne; w przeciwnym razie wynik zawiera ostrzeżenie i może być bez muzyki. Dźwięk źródłowego filmu nie jest jeszcze miksowany.
 - Render odbywa się w czasie rzeczywistym; karta musi pozostać aktywna.
-- Wynik jest przechowywany jako Blob w RAM. Na telefonie z 4 GB RAM nie uruchamiać od razu długich projektów.
+- Domyślny limit tej wersji to 60 sekund łącznego materiału (można świadomie zmienić przez maxDurationSec). Wynik jest przechowywany jako Blob w RAM. Na telefonie z 4 GB RAM nie uruchamiać od razu długich projektów.
 - Brak miksowania wielu ścieżek audio, przejść, korekcji barw, strumieniowego zapisu i obsługi wszystkich nietypowych kodeków.
 - Przed integracją potrzebne są testy na telefonie: zdjęcie, film, napisy, audio, anulowanie i dłuższe sceny.
 

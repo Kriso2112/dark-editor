@@ -1,9 +1,10 @@
+
 <!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DARK EDITOR 0.7.2</title>
+<title>DARK EDITOR 0.8.0</title>
 <style>
 :root{--gold:#d6ad55;--bg:#090909;--panel:#171717;--line:#393021}
 *{box-sizing:border-box}
@@ -41,7 +42,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 
 <header>
 <h1>DARK EDITOR</h1>
-<p>BLACK & GOLD CINEMA STUDIO • VERSION 0.7.2</p>
+<p>BLACK & GOLD CINEMA STUDIO • VERSION 0.8.0</p>
 </header>
 
 <section>
@@ -99,8 +100,10 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 <input id="durationInput" type="number" min="1" max="600" value="5">
 <div class="row">
 <button id="applyDuration">ZASTOSUJ DŁUGOŚĆ</button>
+<button id="autoDurations">AUTO CZAS WIDEO</button>
 <button id="deleteClip">USUŃ SCENĘ</button>
 </div>
+<p class="small">AUTO CZAS WIDEO odczytuje rzeczywistą długość dodanych filmów. Zdjęcia zachowują ustawiony czas.</p>
 <div class="row" style="margin-top:8px">
 <button id="moveLeft">↑ PRZESUŃ W GÓRĘ</button>
 <button id="moveRight">↓ PRZESUŃ W DÓŁ</button>
@@ -148,7 +151,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 <p class="small warning">Po wczytaniu zapisu wybierz ponownie pliki z galerii. Edytor dopasuje je do zapisanych scen po nazwach.</p>
 </section>
 
-<footer>DARK EDITOR 0.7.2 • BLACK & GOLD</footer>
+<footer>DARK EDITOR 0.8.0 • BLACK & GOLD</footer>
 
 <script>
 (() => {
@@ -159,8 +162,8 @@ const video = $("video");
 const photo = $("photo");
 const audio = $("audio");
 
-const STORAGE_KEY = "darkEditor072";
-const OLD_KEYS = ["darkEditor071","darkEditor07","darkEditor06"];
+const STORAGE_KEY = "darkEditor080";
+const OLD_KEYS = ["darkEditor072","darkEditor071","darkEditor07","darkEditor06"];
 
 let clips = [];
 let subtitles = [];
@@ -292,15 +295,22 @@ function renderClips() {
       (!clip.url?" • BRAK PLIKU":"");
 
     const actions=document.createElement("div");
+    const edit=document.createElement("button");
+    edit.textContent="EDYTUJ SCENĘ";
+    edit.onclick=()=>{
+      stopPlayback("Wybrano scenę do edycji.");
+      selectClip(i);
+    };
+
     const choose=document.createElement("button");
-    choose.textContent="WYBIERZ";
+    choose.textContent=clip.url?"ZAMIEŃ PLIK":"DODAJ PLIK";
     choose.onclick=()=>{
       stopPlayback("Wybierz plik dla tej sceny.");
       pendingClipIndex=i;
       $("mediaInput").click();
     };
 
-    actions.appendChild(choose);
+    actions.append(edit,choose);
     box.append(name,actions);
     track.appendChild(box);
   });
@@ -342,7 +352,7 @@ function renderSubtitles() {
 
 function projectData() {
   return {
-    version:"0.7.2",
+    version:"0.8.0",
     name:$("projectName").value,
     mode,
     clips:clips.map(c=>({
@@ -418,6 +428,58 @@ $("mediaInput").addEventListener("change",e=>{
 });
 
 $("mediaInput").addEventListener("cancel",()=>{ pendingClipIndex=null; });
+
+function readVideoDuration(url) {
+  return new Promise((resolve,reject)=>{
+    const probe=document.createElement("video");
+    probe.preload="metadata";
+    probe.onloadedmetadata=()=>{
+      const duration=probe.duration;
+      probe.removeAttribute("src");
+      probe.load();
+      if (Number.isFinite(duration)&&duration>0) resolve(duration);
+      else reject(new Error("Nie udało się odczytać długości filmu."));
+    };
+    probe.onerror=()=>{
+      probe.removeAttribute("src");
+      probe.load();
+      reject(new Error("Nie można odczytać tego pliku wideo."));
+    };
+    probe.src=url;
+  });
+}
+
+$("autoDurations").onclick=async()=>{
+  const videos=clips
+    .map((clip,index)=>({clip,index}))
+    .filter(item=>item.clip.type==="video"&&item.clip.url);
+
+  if (!videos.length) {
+    return alert("Najpierw dodaj przynajmniej jeden film.");
+  }
+
+  stopPlayback("Odczytywanie długości filmów...");
+  let updated=0;
+  let failed=0;
+
+  for (const item of videos) {
+    try {
+      const duration=await readVideoDuration(item.clip.url);
+      item.clip.duration=Math.max(1,Math.min(600,Math.round(duration*10)/10));
+      updated++;
+    } catch (_) {
+      failed++;
+    }
+  }
+
+  renderClips();
+  if (selected>=0) selectClip(selected);
+  saveSilently();
+
+  status("selectedInfo",
+    `Automatycznie ustawiono czas ${updated} film(ów).`+
+    (failed?` Nie udało się odczytać: ${failed}.`:""));
+};
 
 $("applyDuration").onclick=()=>{
   if (selected<0) return alert("Najpierw wybierz scenę.");
@@ -664,7 +726,7 @@ $("manualMode").onclick=()=>{
 $("saveProject").onclick=()=>{
   try {
     localStorage.setItem(STORAGE_KEY,JSON.stringify(projectData()));
-    status("saveStatus","Projekt 0.7.2 zapisany w pamięci przeglądarki.");
+    status("saveStatus","Projekt 0.8.0 zapisany w pamięci przeglądarki.");
   } catch (_) {
     status("saveStatus","Nie udało się zapisać projektu.");
   }

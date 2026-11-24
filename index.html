@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="pl">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DARK EDITOR 0.7.1</title>
+<title>DARK EDITOR 0.7.2</title>
 <style>
 :root{--gold:#d6ad55;--bg:#090909;--panel:#171717;--line:#393021}
 *{box-sizing:border-box}
@@ -42,7 +41,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 
 <header>
 <h1>DARK EDITOR</h1>
-<p>BLACK & GOLD CINEMA STUDIO • VERSION 0.7.1</p>
+<p>BLACK & GOLD CINEMA STUDIO • VERSION 0.7.2</p>
 </header>
 
 <section>
@@ -149,7 +148,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 <p class="small warning">Po wczytaniu zapisu wybierz ponownie pliki z galerii. Edytor dopasuje je do zapisanych scen po nazwach.</p>
 </section>
 
-<footer>DARK EDITOR 0.7.1 • BLACK & GOLD</footer>
+<footer>DARK EDITOR 0.7.2 • BLACK & GOLD</footer>
 
 <script>
 (() => {
@@ -160,8 +159,8 @@ const video = $("video");
 const photo = $("photo");
 const audio = $("audio");
 
-const STORAGE_KEY = "darkEditor071";
-const OLD_KEYS = ["darkEditor07","darkEditor06"];
+const STORAGE_KEY = "darkEditor072";
+const OLD_KEYS = ["darkEditor071","darkEditor07","darkEditor06"];
 
 let clips = [];
 let subtitles = [];
@@ -170,6 +169,7 @@ let audioUrl = null;
 let audioName = "";
 let playing = false;
 let playToken = 0;
+let pendingClipIndex = null;
 let mode = "auto";
 let currentElapsed = 0;
 
@@ -294,7 +294,11 @@ function renderClips() {
     const actions=document.createElement("div");
     const choose=document.createElement("button");
     choose.textContent="WYBIERZ";
-    choose.onclick=()=>selectClip(i);
+    choose.onclick=()=>{
+      stopPlayback("Wybierz plik dla tej sceny.");
+      pendingClipIndex=i;
+      $("mediaInput").click();
+    };
 
     actions.appendChild(choose);
     box.append(name,actions);
@@ -338,7 +342,7 @@ function renderSubtitles() {
 
 function projectData() {
   return {
-    version:"0.7.1",
+    version:"0.7.2",
     name:$("projectName").value,
     mode,
     clips:clips.map(c=>({
@@ -362,8 +366,10 @@ function addMediaFiles(fileList) {
   const files=Array.from(fileList||[]);
   let added=0;
   let rejected=0;
+  let targetIndex=pendingClipIndex;
+  pendingClipIndex=null;
 
-  files.forEach(file=>{
+  files.forEach((file,fileIndex)=>{
     const type=file.type.startsWith("video/")?"video":
       file.type.startsWith("image/")?"image":"";
 
@@ -372,39 +378,36 @@ function addMediaFiles(fileList) {
       return;
     }
 
-    const existing=clips.find(c=>
-      !c.url && c.name===file.name && c.type===type
-    );
-
-    const url=URL.createObjectURL(file);
-
-    if (existing) {
-      existing.url=url;
-    } else {
-      clips.push({
-        name:file.name,
-        type,
-        url,
-        duration:5
-      });
+    let existing=null;
+    if (fileIndex===0 && Number.isInteger(targetIndex) && clips[targetIndex] &&
+        !clips[targetIndex].url && clips[targetIndex].type===type) {
+      existing=clips[targetIndex];
+    }
+    if (!existing) {
+      existing=clips.find(c=>!c.url && c.name===file.name && c.type===type);
     }
 
+    const url=URL.createObjectURL(file);
+    if (existing) {
+      if (existing.url) URL.revokeObjectURL(existing.url);
+      existing.url=url;
+      existing.name=file.name;
+    } else {
+      clips.push({name:file.name,type,url,duration:5});
+    }
     added++;
   });
 
   renderClips();
-
   if (added) {
-    const firstMissing=clips.findIndex(c=>!c.url);
-    selectClip(firstMissing>=0?firstMissing:clips.length-1);
-
-    status("mediaStatus",
-      `Dodano lub przywrócono ${added} plik(ów).`+
+    const preferred=Number.isInteger(targetIndex) && clips[targetIndex] && clips[targetIndex].url
+      ? targetIndex : clips.findIndex(c=>!c.url);
+    selectClip(preferred>=0?preferred:clips.length-1);
+    status("mediaStatus",`Dodano lub przywrócono ${added} plik(ów).`+
       (rejected?`\nPominięto: ${rejected}.`:""));
     saveSilently();
   } else {
-    status("mediaStatus",
-      "Nie dodano plików. Wybierz film MP4 lub zdjęcie JPG/PNG.");
+    status("mediaStatus","Nie dodano plików. Wybierz film MP4 lub zdjęcie JPG/PNG.");
   }
 }
 
@@ -413,6 +416,8 @@ $("mediaInput").addEventListener("change",e=>{
   addMediaFiles(e.target.files);
   e.target.value="";
 });
+
+$("mediaInput").addEventListener("cancel",()=>{ pendingClipIndex=null; });
 
 $("applyDuration").onclick=()=>{
   if (selected<0) return alert("Najpierw wybierz scenę.");
@@ -515,31 +520,24 @@ $("addSubtitle").onclick=()=>{
   saveSilently();
 };
 
-function waitForMetadata(token) {
+function waitForPlayable(token) {
   if (!playing||token!==playToken) {
     return Promise.reject(new Error("Przerwano."));
   }
-
-  if (video.readyState>=1) return Promise.resolve();
+  if (video.readyState>=2) return Promise.resolve();
 
   return new Promise((resolve,reject)=>{
     const cleanup=()=>{
-      video.removeEventListener("loadedmetadata",done);
+      video.removeEventListener("canplay",done);
+      video.removeEventListener("loadeddata",done);
       video.removeEventListener("error",fail);
     };
-
-    const done=()=>{
-      cleanup();
-      resolve();
-    };
-
-    const fail=()=>{
-      cleanup();
-      reject(new Error("Nie można wczytać filmu."));
-    };
-
-    video.addEventListener("loadedmetadata",done,{once:true});
+    const done=()=>{ cleanup(); resolve(); };
+    const fail=()=>{ cleanup(); reject(new Error("Nie można wczytać filmu.")); };
+    video.addEventListener("canplay",done,{once:true});
+    video.addEventListener("loadeddata",done,{once:true});
     video.addEventListener("error",fail,{once:true});
+    if (video.readyState>=2) done();
   });
 }
 
@@ -600,21 +598,19 @@ async function playSequence() {
       `Odtwarzana scena: ${clip.name} (${clip.duration} s)`);
 
     const duration=safeDuration(clip.duration);
-    const start=performance.now();
+    let start=performance.now();
 
     if (clip.type==="video") {
       try {
-        await waitForMetadata(token);
-
+        await waitForPlayable(token);
         if (!playing||token!==playToken) break;
-
         video.currentTime=0;
         await video.play();
+        start=performance.now();
       } catch (_) {
         if (!playing||token!==playToken) break;
-
-        status("playStatus",
-          `Nie można odtworzyć: ${clip.name}. Pomijam scenę.`);
+        status("playStatus",`Nie można odtworzyć: ${clip.name}. Pomijam scenę.`);
+        continue;
       }
     }
 
@@ -668,7 +664,7 @@ $("manualMode").onclick=()=>{
 $("saveProject").onclick=()=>{
   try {
     localStorage.setItem(STORAGE_KEY,JSON.stringify(projectData()));
-    status("saveStatus","Projekt 0.7.1 zapisany w pamięci przeglądarki.");
+    status("saveStatus","Projekt 0.7.2 zapisany w pamięci przeglądarki.");
   } catch (_) {
     status("saveStatus","Nie udało się zapisać projektu.");
   }
@@ -783,4 +779,3 @@ try {
 </script>
 </body>
 </html>
-

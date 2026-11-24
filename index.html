@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DARK EDITOR 0.8.0</title>
+<title>DARK EDITOR 0.9.0</title>
 <style>
 :root{--gold:#d6ad55;--bg:#090909;--panel:#171717;--line:#393021}
 *{box-sizing:border-box}
@@ -42,7 +42,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 
 <header>
 <h1>DARK EDITOR</h1>
-<p>BLACK & GOLD CINEMA STUDIO • VERSION 0.8.0</p>
+<p>BLACK & GOLD CINEMA STUDIO • VERSION 0.9.0</p>
 </header>
 
 <section>
@@ -94,7 +94,22 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 </section>
 
 <section>
-<h2>5. EDYCJA WYBRANEJ SCENY</h2>
+<h2>5. SCENARIUSZ I AUTOMATYCZNY PLAN SCEN</h2>
+<p class="small">Wklej scenariusz filmu. Najlepiej oddzielaj akapity pustą linią. DARK AUTO podzieli tekst na sceny i oszacuje czas lektora. To plan montażu — nie generuje jeszcze samodzielnie obrazu ani pliku MP4.</p>
+<label for="scriptInput">SCENARIUSZ FILMU</label>
+<textarea id="scriptInput" rows="7" style="width:100%;background:#090909;color:#fff;border:1px solid #66532c;border-radius:7px;padding:11px;font:14px Arial;line-height:1.5" placeholder="Wklej tutaj tekst scenariusza...
+
+Oddziel kolejne części pustą linią."></textarea>
+<div class="row" style="margin-top:8px">
+<button id="generateStoryboard">✦ PODZIEL NA SCENY</button>
+<button id="clearStoryboard">WYCZYŚĆ PLAN</button>
+</div>
+<div id="storyboardStatus" class="status">Nie przygotowano jeszcze planu scen.</div>
+<div id="storyboardList"></div>
+</section>
+
+<section>
+<h2>6. EDYCJA WYBRANEJ SCENY</h2>
 <div id="selectedInfo" class="status">Nie wybrano sceny.</div>
 <label>Długość sceny (sekundy)</label>
 <input id="durationInput" type="number" min="1" max="600" value="5">
@@ -111,7 +126,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 </section>
 
 <section>
-<h2>6. MUZYKA I LEKTOR</h2>
+<h2>7. MUZYKA I LEKTOR</h2>
 <label class="filebtn" for="audioInput">＋ DODAJ MUZYKĘ / LEKTORA</label>
 <input id="audioInput" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg" class="hidden">
 <label>Głośność muzyki: <span id="volumeLabel">50%</span></label>
@@ -121,7 +136,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 </section>
 
 <section>
-<h2>7. NAPISY NA FILMIE</h2>
+<h2>8. NAPISY NA FILMIE</h2>
 <label>Treść napisu</label>
 <input id="subtitleText" type="text" placeholder="Wpisz tekst napisu">
 <div class="row">
@@ -139,7 +154,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 </section>
 
 <section>
-<h2>8. ZAPIS I ODTWARZANIE PROJEKTU</h2>
+<h2>9. ZAPIS I ODTWARZANIE PROJEKTU</h2>
 <label>Nazwa projektu</label>
 <input id="projectName" value="Mój projekt">
 <div class="row">
@@ -151,7 +166,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 <p class="small warning">Po wczytaniu zapisu wybierz ponownie pliki z galerii. Edytor dopasuje je do zapisanych scen po nazwach.</p>
 </section>
 
-<footer>DARK EDITOR 0.8.0 • BLACK & GOLD</footer>
+<footer>DARK EDITOR 0.9.0 • BLACK & GOLD</footer>
 
 <script>
 (() => {
@@ -162,8 +177,8 @@ const video = $("video");
 const photo = $("photo");
 const audio = $("audio");
 
-const STORAGE_KEY = "darkEditor080";
-const OLD_KEYS = ["darkEditor072","darkEditor071","darkEditor07","darkEditor06"];
+const STORAGE_KEY = "darkEditor090";
+const OLD_KEYS = ["darkEditor080","darkEditor072","darkEditor071","darkEditor07","darkEditor06"];
 
 let clips = [];
 let subtitles = [];
@@ -175,6 +190,8 @@ let playToken = 0;
 let pendingClipIndex = null;
 let mode = "auto";
 let currentElapsed = 0;
+let storyboard = [];
+let scriptText = "";
 
 const status = (id,text) => {
   $(id).textContent = text;
@@ -350,9 +367,75 @@ function renderSubtitles() {
   });
 }
 
+function splitIntoSceneTexts(text) {
+  const paragraphs=text.split(/\n\s*\n/).map(x=>x.trim()).filter(Boolean);
+  if (paragraphs.length>1) return paragraphs;
+  const sentences=(text.match(/[^.!?]+[.!?]+|[^.!?]+$/g)||[])
+    .map(x=>x.trim()).filter(Boolean);
+  const groups=[];
+  for(let i=0;i<sentences.length;i+=2) groups.push(sentences.slice(i,i+2).join(" "));
+  return groups;
+}
+
+function estimateNarrationSeconds(text) {
+  const words=(text.match(/[\p{L}\p{N}]+/gu)||[]).length;
+  return Math.max(4,Math.min(30,Math.ceil(words/2.4+1.5)));
+}
+
+function renderStoryboard() {
+  const list=$("storyboardList");
+  list.replaceChildren();
+  if(!storyboard.length) {
+    $("storyboardStatus").textContent="Nie przygotowano jeszcze planu scen.";
+    return;
+  }
+  const total=storyboard.reduce((sum,item)=>sum+item.duration,0);
+  $("storyboardStatus").textContent=`Gotowe: ${storyboard.length} scen • szacowany czas lektora: ${Math.floor(total/60)} min ${total%60} s.`;
+  storyboard.forEach((item,index)=>{
+    const box=document.createElement("div");
+    box.className="clip";
+    const title=document.createElement("strong");
+    title.style.color="var(--gold)";
+    title.textContent=`SCENA ${index+1} • około ${item.duration} s`;
+    const body=document.createElement("p");
+    body.className="small";
+    body.style.whiteSpace="pre-wrap";
+    body.textContent=item.text;
+    const hint=document.createElement("p");
+    hint.className="small";
+    hint.textContent="Sugestia obrazu: materiał wideo lub zdjęcie ilustrujące treść tej sceny.";
+    box.append(title,body,hint);
+    list.appendChild(box);
+  });
+}
+
+$("generateStoryboard").onclick=()=>{
+  const text=$("scriptInput").value.trim();
+  if(!text) return alert("Najpierw wklej scenariusz filmu.");
+  const parts=splitIntoSceneTexts(text);
+  if(!parts.length) return alert("Nie udało się podzielić tekstu. Sprawdź scenariusz.");
+  storyboard=parts.map((part,index)=>({text:part,duration:estimateNarrationSeconds(part),number:index+1}));
+  scriptText=text;
+  renderStoryboard();
+  saveSilently();
+};
+
+$("clearStoryboard").onclick=()=>{
+  storyboard=[];
+  scriptText="";
+  $("scriptInput").value="";
+  renderStoryboard();
+  saveSilently();
+};
+
+$("scriptInput").addEventListener("input",()=>{
+  scriptText=$("scriptInput").value;
+  saveSilently();
+});
+
 function projectData() {
   return {
-    version:"0.8.0",
+    version:"0.9.0",
     name:$("projectName").value,
     mode,
     clips:clips.map(c=>({
@@ -361,6 +444,8 @@ function projectData() {
       duration:c.duration
     })),
     subtitles,
+    scriptText:$("scriptInput").value,
+    storyboard,
     volume:$("volumeInput").value,
     audioName
   };
@@ -726,7 +811,7 @@ $("manualMode").onclick=()=>{
 $("saveProject").onclick=()=>{
   try {
     localStorage.setItem(STORAGE_KEY,JSON.stringify(projectData()));
-    status("saveStatus","Projekt 0.8.0 zapisany w pamięci przeglądarki.");
+    status("saveStatus","Projekt 0.9.0 zapisany w pamięci przeglądarki.");
   } catch (_) {
     status("saveStatus","Nie udało się zapisać projektu.");
   }
@@ -763,6 +848,12 @@ function restoreProject(data) {
     :[];
 
   mode=data.mode==="manual"?"manual":"auto";
+  scriptText=String(data.scriptText||"");
+  $("scriptInput").value=scriptText;
+  storyboard=Array.isArray(data.storyboard)?data.storyboard.map((item,i)=>({
+    text:String(item.text||""),duration:safeDuration(item.duration),number:i+1
+  })):[];
+  renderStoryboard();
 
   $("projectName").value=data.name||"Mój projekt";
 

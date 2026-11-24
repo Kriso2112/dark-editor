@@ -130,7 +130,7 @@ Każda zgoda zapisuje identyfikator/wersję snapshotu, wybranych dostawców, lim
 
 - Frontend w repozytorium: pojedynczy `index.html`, wersja 0.9.0.
 - Obecne funkcje: podgląd, ręczne dodawanie mediów, prosta oś czasu, napisy, plan scen i zapis części danych w localStorage.
-- Brak backendu, bezpośrednich adapterów AI i potwierdzonego eksportu MP4 w aktualnym froncie.
+- Brak backendu i bezpośrednich adapterów AI. Główny frontend 0.9.0 nadal nie ma zintegrowanego eksportu. Na telefonie potwierdzono osobny 5-sekundowy test MP4: plik 109 KB utworzył się i użytkownik potwierdził odtwarzanie. Dodano odizolowany moduł eksperymentalny `js/local-renderer.js`; wymaga testów na realnych materiałach przed integracją.
 - Kopia źródłowego pliku: `backups/index-0.9.0.html`.
 - Prace rozwojowe: gałąź `dark-auto-foundation`.
 

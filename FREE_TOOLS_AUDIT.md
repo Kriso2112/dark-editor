@@ -56,10 +56,10 @@ Przeglądarka użytkownika zgłasza Chrome na Androidzie w wersji 157. Tabele zg
 ## Kolejność kolejnych prac
 
 - [x] Dodać bezpłatną stronę diagnostyczną WebCodecs/MediaRecorder: `diagnostics/export-check.html`.
-- [ ] Użytkownik uruchamia test na swoim telefonie i odsyła wynik.
-- [ ] Test kompatybilności WebCodecs w Android Chrome.
-- [ ] Dodać testowy renderer lokalny, bez płatnych API.
-- [ ] Przetestować MP4 720p na krótkim materiale.
+- [x] Użytkownik uruchomił diagnostykę na telefonie: Chrome 157 / Android 10, 4 GB pamięci orientacyjnej, 8 rdzeni logicznych; VideoEncoder, AudioEncoder, MediaRecorder, H.264 720p/30, VP9 720p/30, AAC oraz MP4 zgłosiły obsługę.
+- [x] Użytkownik potwierdził rzeczywisty 5-sekundowy test MP4: plik 109 KB utworzył się, podgląd i pobrany plik działały.
+- [x] Dodano izolowany moduł eksperymentalny `js/local-renderer.js` oraz dokumentację `LOCAL_RENDERER.md`; kod przeszedł kontrolę składni JavaScript.
+- [ ] Przetestować renderer modułowy MP4 720p na krótkim materiale z telefonu, zanim zostanie podłączony do aplikacji.
 - [ ] Zmierzyć wydajność na telefonie i ustawić bezpieczne limity.
 - [ ] Dopiero później wybrać darmowe źródła TTS, muzyki i materiałów wizualnych z weryfikacją licencji.
 - [ ] Płatne API pozostają wyłączone domyślnie i wymagają osobnej zgody dla konkretnego projektu.

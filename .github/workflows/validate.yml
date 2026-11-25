@@ -1,0 +1,49 @@
+name: Validate DARK EDITOR
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/mp4-export-stabilization]
+
+permissions:
+  contents: read
+
+jobs:
+  syntax-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check renderer JavaScript syntax
+        run: node --check js/local-renderer.js
+      - name: Check inline scripts and required export wiring
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const vm = require('node:vm');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const renderer = fs.readFileSync('js/local-renderer.js', 'utf8');
+
+          const scripts = [...html.matchAll(/<script(?![^>]*\\bsrc=)[^>]*>([\\s\\S]*?)<\\/script>/gi)];
+          if (!scripts.length) throw new Error('No inline application scripts found.');
+          scripts.forEach((match, index) => new vm.Script(match[1], { filename: `index-inline-${index + 1}.js` }));
+
+          const checks = [
+            ['renderer script included', /<script\\s+src=["']js\\/local-renderer\\.js["']/.test(html)],
+            ['approved export invokes renderer', /DarkLocalRenderer\\.render\\s*\\(/.test(html)],
+            ['MP4 MIME is required', /video\\/mp4/.test(renderer)],
+            ['no WebM fallback', !/video\\/webm/i.test(renderer)],
+            ['audio mixing destination exists', /createMediaStreamDestination/.test(renderer)],
+            ['source video audio connected', /createMediaElementSource\\(video\\)/.test(renderer)],
+            ['render cleanup exists', /finally\\s*\\{/.test(renderer)]
+          ];
+          for (const [label, passed] of checks) {
+            console.log((passed ? 'PASS ' : 'FAIL ') + label);
+            if (!passed) process.exitCode = 1;
+          }
+          NODE

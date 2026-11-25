@@ -102,7 +102,6 @@
     if (!ctx) throw new Error("Nie można uruchomić Canvas.");
     const canvasStream = canvas.captureStream(fps);
     let combinedStream = canvasStream;
-    let audioTracks = [];
 
     if (audioElement && audioElement.src) {
       const capture = audioElement.captureStream || audioElement.mozCaptureStream;
@@ -111,20 +110,21 @@
         throw new Error("Przeglądarka nie udostępnia przechwytywania muzyki. Usuń muzykę lub użyj innej przeglądarki do testu.");
       }
       const audioStream = capture.call(audioElement);
-      audioTracks = audioStream.getAudioTracks();
+      const audioTracks = audioStream.getAudioTracks();
+      if (!audioTracks.length) {
+        canvasStream.getTracks().forEach(track => track.stop());
+        throw new Error("Nie udało się przechwycić ścieżki audio z wybranego pliku.");
+      }
       audioTracks.forEach(track => combinedStream.addTrack(track));
     }
 
     const chunks = [];
     let recorder;
-    let stopped = false;
     const video = document.createElement("video");
     video.playsInline = true;
     video.muted = true;
     video.preload = "auto";
     video.setAttribute("playsinline", "");
-    let startTime = 0;
-    let timelineStart = 0;
 
     const stopTracks = () => {
       combinedStream.getTracks().forEach(track => { try { track.stop(); } catch (_) {} });
@@ -148,7 +148,6 @@
         });
       }
 
-      startTime = performance.now();
       let elapsedTotal = 0;
 
       for (let index = 0; index < clips.length; index++) {
@@ -160,15 +159,17 @@
           video.pause();
           video.removeAttribute("src");
           video.load();
+          const loaded = waitEvent(video, "loadeddata", "error");
           video.src = clip.url;
-          await waitEvent(video, "loadeddata", "error");
+          await loaded;
           video.currentTime = 0;
           await video.play();
           source = video;
         } else {
           const img = new Image();
+          const loaded = waitEvent(img, "load", "error");
           img.src = clip.url;
-          await waitEvent(img, "load", "error");
+          await loaded;
           source = img;
         }
 
@@ -181,7 +182,6 @@
           const progress = Math.min(99, Math.round(globalElapsed / total * 100));
           onProgress(progress, globalElapsed, total);
           await new Promise(resolve => requestAnimationFrame(resolve));
-          if (stopped) throw new Error("Renderowanie anulowane.");
         }
         if (clip.type === "video") video.pause();
         elapsedTotal += duration;

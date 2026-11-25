@@ -59,7 +59,8 @@ Przeglądarka użytkownika zgłasza Chrome na Androidzie w wersji 157. Tabele zg
 - [x] Użytkownik uruchomił diagnostykę na telefonie: Chrome 157 / Android 10, 4 GB pamięci orientacyjnej, 8 rdzeni logicznych; VideoEncoder, AudioEncoder, MediaRecorder, H.264 720p/30, VP9 720p/30, AAC oraz MP4 zgłosiły obsługę.
 - [x] Użytkownik potwierdził rzeczywisty 5-sekundowy test MP4: plik 109 KB utworzył się, podgląd i pobrany plik działały.
 - [x] Dodano izolowany moduł eksperymentalny `js/local-renderer.js` oraz dokumentację `LOCAL_RENDERER.md`; kod przeszedł kontrolę składni JavaScript.
-- [ ] Przetestować renderer modułowy MP4 720p na krótkim materiale z telefonu, zanim zostanie podłączony do aplikacji.
+- [x] Użytkownik potwierdził na telefonie render MP4 ze zdjęciem/napisem i dźwiękiem z osobnego pliku audio; po poprawce renderer wymaga AAC i raportuje liczbę ścieżek audio. Test obrazu był też wykonany w 640 × 360 i HD 1280 × 720, ale nie należy zakładać, że dźwięk został osobno potwierdzony w obu rozdzielczościach.
+- [ ] Przetestować wejściowy klip wideo, kilka scen, anulowanie i dłuższe sceny.
 - [ ] Zmierzyć wydajność na telefonie i ustawić bezpieczne limity.
 - [ ] Dopiero później wybrać darmowe źródła TTS, muzyki i materiałów wizualnych z weryfikacją licencji.
 - [ ] Płatne API pozostają wyłączone domyślnie i wymagają osobnej zgody dla konkretnego projektu.

@@ -148,7 +148,10 @@
     const cleanupAudio = async () => {
       try { if (videoGain) videoGain.disconnect(); } catch (_) {}
       try { if (musicGain) musicGain.disconnect(); } catch (_) {}
-      try { if (audioContext && audioContext.state !== "closed") await audioContext.close(); } catch (_) {}
+      try {
+        if (musicSource) musicSource.disconnect();
+        if (audioContext && !hasMusic && audioContext.state !== "closed") await audioContext.close();
+      } catch (_) {}
     };
 
     try {
@@ -159,7 +162,8 @@
         if (!AudioContextClass) {
           throw new Error("Ta przeglądarka nie obsługuje miksowania dźwięku. Eksport z audio został zatrzymany.");
         }
-        audioContext = new AudioContextClass();
+        musicSource = hasMusic ? audioSources.get(audioElement) : null;
+        audioContext = musicSource ? musicSource.context : new AudioContextClass();
         audioDestination = audioContext.createMediaStreamDestination();
 
         if (hasVideoAudio) {
@@ -170,10 +174,11 @@
           videoGain.connect(audioDestination);
         }
         if (hasMusic) {
-          musicSource = audioSources.get(audioElement);
           if (!musicSource) {
             musicSource = audioContext.createMediaElementSource(audioElement);
             audioSources.set(audioElement, musicSource);
+          } else {
+            try { musicSource.disconnect(); } catch (_) {}
           }
           musicGain = audioContext.createGain();
           musicGain.gain.value = volume;

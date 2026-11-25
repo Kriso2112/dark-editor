@@ -961,9 +961,11 @@ async function restoreProject(data,record=null) {
   }
   audioName=String(data.audioName||"");
   $("audioTrack").textContent=audioName||"Brak muzyki.";
-  status("audioStatus",audioName
-    ?"Muzykę trzeba ponownie wybrać z galerii."
-    :"Nie dodano audio.");
+  status("audioStatus",audioFile
+    ?"Muzyka i lektor zostały przywrócone."
+    :audioName
+      ?"Muzykę trzeba ponownie wybrać z galerii."
+      :"Nie dodano audio.");
 
   showEmpty();
   $("caption").textContent="";
@@ -972,6 +974,7 @@ async function restoreProject(data,record=null) {
 
   renderClips();
   renderSubtitles();
+  if (clips.length && clips[0].url) selectClip(0);
 
   status("saveStatus",
     clips.every(c=>c.url)

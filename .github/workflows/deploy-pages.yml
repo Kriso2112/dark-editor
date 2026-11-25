@@ -23,14 +23,29 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Check PWA files
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate PWA files and scripts
         run: |
           test -s index.html
           test -s manifest.json
           test -s service-worker.js
           test -s icon.svg
-          grep -q 'rel="manifest"' index.html
-          grep -q 'serviceWorker.register' index.html
+          node --check service-worker.js
+          node -e "const m = JSON.parse(require('node:fs').readFileSync('manifest.json', 'utf8')); if (m.start_url !== './' || m.scope !== './' || !m.icons?.length) throw new Error('Invalid PWA manifest');"
+          node <<'NODE'
+          const fs = require('node:fs');
+          const vm = require('node:vm');
+          const html = fs.readFileSync('index.html', 'utf8');
+          const scripts = [...html.matchAll(/<script(?![^>]*\\bsrc=)[^>]*>([\\s\\S]*?)<\\/script>/gi)];
+          if (!scripts.length) throw new Error('No inline scripts found');
+          scripts.forEach((match, index) => new vm.Script(match[1], { filename: 'inline-' + (index + 1) + '.js' }));
+          if (!html.includes('rel="manifest"')) throw new Error('Manifest link missing');
+          if (!html.includes('serviceWorker.register')) throw new Error('Service worker registration missing');
+          console.log('PWA shell and inline JavaScript checks passed.');
+          NODE
 
   deploy:
     if: github.event_name != 'pull_request'

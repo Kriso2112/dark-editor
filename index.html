@@ -988,8 +988,8 @@ $("renderExport").onclick = async () => {
 
   try {
     const result = await window.DarkLocalRenderer.render({
-      clips,
-      subtitles,
+      clips: clips.map(clip => ({ ...clip })),
+      subtitles: subtitles.map(item => ({ ...item })),
       audioElement: audio,
       audioVolume: Number($("volumeInput").value) / 100,
       width: 1280,

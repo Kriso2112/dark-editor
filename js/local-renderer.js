@@ -136,6 +136,8 @@
     let musicGain = null;
     let videoSource = null;
     let musicSource = null;
+    const hasVideoAudio = clips.some(clip => clip.type === "video");
+    const hasMusic = !!(audioElement && (audioElement.currentSrc || audioElement.src));
     let recorder = null;
     let stoppedPromise = null;
     let completed = false;
@@ -155,8 +157,6 @@
     };
 
     try {
-      const hasVideoAudio = clips.some(clip => clip.type === "video");
-      const hasMusic = !!(audioElement && (audioElement.currentSrc || audioElement.src));
       if (hasVideoAudio || hasMusic) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextClass) {

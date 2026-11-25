@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#090909"><title>DARK EDITOR — test wielu scen</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;padding:18px;background:#090909;color:#f4efe5;font:16px/1.5 system-ui,Arial}main{max-width:720px;margin:auto}h1,h2{color:#e0b85c}section{background:#171717;border:1px solid #594525;border-radius:14px;padding:16px;margin:16px 0}label{display:block;margin:12px 0 5px;color:#e0b85c}input,select{width:100%;padding:12px;border-radius:8px;background:#252525;color:#fff;border:1px solid #66522f}button{width:100%;padding:14px;margin-top:12px;border-radius:9px;background:#2c2418;color:#e0b85c;border:1px solid #e0b85c;font-weight:800;font-size:15px}button:disabled{opacity:.45}progress{width:100%;height:18px}#status{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:12px}.ok{color:#91dfa0}.err{color:#ff938b}.hint{font-size:13px;color:#aaa}video{width:100%;margin-top:12px;background:#000}a{display:block;color:#e0b85c;margin-top:12px}.scene{padding:9px;margin:7px 0;background:#222;border-radius:8px;overflow-wrap:anywhere}
+</style></head>
+<body><main>
+<h1>DARK EDITOR</h1><p>TEST EKSPORTU WIELU SCEN — WERSJA ROBOCZA</p>
+<section>
+<h2>1. Dodaj sceny</h2>
+<p class="hint">Wybierz kilka zdjęć i filmów naraz. Kolejność plików zostanie zachowana zgodnie z kolejnością przekazaną przez telefon. Pliki pozostają lokalnie w przeglądarce.</p>
+<label for="media">Zdjęcia i filmy</label><input id="media" type="file" accept="image/*,video/*" multiple>
+<div id="sceneList" class="hint">Nie wybrano scen.</div>
+<label for="duration">Czas każdej sceny</label><select id="duration"><option value="3">3 sekundy</option><option value="5" selected>5 sekund</option><option value="8">8 sekund</option></select>
+<label for="quality">Jakość eksportu</label><select id="quality"><option value="640">640 × 360 — zalecane do testu</option><option value="1280">1280 × 720 — HD</option></select>
+</section>
+<section>
+<h2>2. Dźwięk i napisy</h2>
+<label for="audio">Opcjonalny plik audio</label><input id="audio" type="file" accept="audio/*">
+<label for="subtitle">Jeden napis do testu (opcjonalnie)</label><input id="subtitle" maxlength="160" placeholder="Wpisz tekst napisu">
+<p class="hint">Napis będzie widoczny przez cały film. W tej wersji testowej nie ma jeszcze osobnych napisów dla każdej sceny.</p>
+</section>
+<section>
+<h2>3. Renderowanie</h2>
+<button id="run" type="button">RENDERUJ WIELE SCEN DO MP4</button>
+<button id="cancel" type="button" disabled>ANULUJ RENDEROWANIE</button>
+<progress id="progress" max="1" value="0"></progress><div id="status">Wybierz co najmniej dwa pliki, aby przetestować montaż wielu scen.</div>
+<video id="preview" controls playsinline hidden></video>
+<a id="save" hidden>POBIERZ GOTOWY FILM MP4</a>
+<button id="share" type="button" hidden>UDOSTĘPNIJ MP4</button>
+</section>
+<section><h2>Ważne</h2><p class="hint">To osobna strona diagnostyczna. Nie zmienia głównego edytora. Render działa w czasie rzeczywistym — pozostaw Chrome otwarty i ekran aktywny. Krótkie testy są bezpieczniejsze dla pamięci telefonu.</p></section>
+</main>
+<script src="../js/local-renderer.js?v=424b0848"></script>
+<script>
+(()=> {
+ const $=id=>document.getElementById(id);
+ const media=$("media"),audio=$("audio"),run=$("run"),cancelBtn=$("cancel"),status=$("status"),progress=$("progress"),preview=$("preview"),save=$("save"),share=$("share"),sceneList=$("sceneList");
+ let urls=[],cancelRender=null,blobUrl=null;
+ function clearOutput(){if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=null;preview.pause();preview.removeAttribute("src");preview.load();preview.hidden=true;save.hidden=true;share.hidden=true;}
+ media.addEventListener("change",()=>{
+  const files=Array.from(media.files||[]);
+  sceneList.textContent="";
+  if(!files.length){sceneList.textContent="Nie wybrano scen.";return;}
+  files.forEach((f,i)=>{const d=document.createElement("div");d.className="scene";d.textContent=(i+1)+". "+f.name+" — "+(f.type.startsWith("image/")?"zdjęcie":f.type.startsWith("video/")?"film":"nieobsługiwany typ");sceneList.appendChild(d);});
+  status.textContent="Wybrano scen: "+files.length+".";
+ });
+ cancelBtn.addEventListener("click",()=>{if(cancelRender){cancelRender();status.textContent="Anulowanie renderowania…";cancelBtn.disabled=true;}});
+ run.addEventListener("click",async()=>{
+  if(!window.DarkLocalRenderer){status.className="err";status.textContent="Nie załadował się renderer.";return;}
+  const files=Array.from(media.files||[]);
+  if(!files.length){status.className="err";status.textContent="Najpierw wybierz zdjęcia lub filmy.";return;}
+  if(files.some(f=>!f.type.startsWith("image/")&&!f.type.startsWith("video/"))){status.className="err";status.textContent="Jeden z plików nie jest zdjęciem ani filmem.";return;}
+  const seconds=Number($("duration").value),total=seconds*files.length;
+  if(total>60){status.className="err";status.textContent="Ten test ma limit 60 sekund. Skróć czas scen lub wybierz mniej plików.";return;}
+  clearOutput();urls.forEach(u=>URL.revokeObjectURL(u));urls=[];
+  run.disabled=true;cancelBtn.disabled=false;progress.value=0;status.className="";
+  try{
+   const clips=files.map(file=>{const url=URL.createObjectURL(file);urls.push(url);return{url,type:file.type.startsWith("image/")?"image":"video",duration:seconds};});
+   let audioElement=null;
+   if(audio.files&&audio.files[0]){audioElement=new Audio();audioElement.src=URL.createObjectURL(audio.files[0]);audioElement.preload="auto";urls.push(audioElement.src);}
+   const text=$("subtitle").value.trim();
+   status.textContent="Renderowanie "+files.length+" scen. Nie zamykaj karty.";
+   const result=await DarkLocalRenderer.render({
+    clips,subtitles:text?[{text,start:0,end:total,position:"bottom"}]:[],
+    audioElement,width:Number($("quality").value),height:Math.round(Number($("quality").value)*9/16),fps:30,maxDurationSec:60,
+    onProgress:p=>{progress.value=p.fraction;status.textContent="Scena "+p.scene+" z "+p.scenes+" — "+Math.round(p.fraction*100)+"%";cancelRender=p.cancel;}
+   });
+   blobUrl=URL.createObjectURL(result.blob);preview.src=blobUrl;preview.hidden=false;save.href=blobUrl;save.download="dark-editor-wiele-scen.mp4";save.hidden=false;share.hidden=false;progress.value=1;
+   status.className="ok";status.textContent="SUKCES: "+result.duration+" s, "+result.width+" × "+result.height+".\nSceny: "+files.length+".\nŚcieżki audio: "+result.audioTrackCount+".\nOdtwórz podgląd i pobierz MP4."+(result.warnings&&result.warnings.length?"\nUwagi: "+result.warnings.join(" "):"");
+  }catch(e){status.className="err";status.textContent="BŁĄD: "+(e&&e.message?e.message:String(e));}
+  finally{cancelRender=null;cancelBtn.disabled=true;run.disabled=false;}
+ });
+ share.addEventListener("click",async()=>{
+  if(!blobUrl)return;
+  try{
+   const file=new File([await (await fetch(blobUrl)).blob()],"dark-editor-wiele-scen.mp4",{type:"video/mp4"});
+   if(navigator.canShare&&navigator.canShare({files:[file]})&&navigator.share){await navigator.share({files:[file],title:"DARK EDITOR — MP4"});status.textContent="Udostępnianie zakończone.";return;}
+   save.click();status.textContent="Ta przeglądarka nie obsługuje udostępniania pliku. Uruchomiono pobieranie MP4.";
+  }catch(e){if(e&&e.name==="AbortError"){status.textContent="Udostępnianie anulowane.";}else{status.className="err";status.textContent="Nie udało się udostępnić pliku: "+(e.message||e);}}
+ });
+ window.addEventListener("beforeunload",()=>{urls.forEach(u=>URL.revokeObjectURL(u));if(blobUrl)URL.revokeObjectURL(blobUrl);});
+})();
+</script></body></html>

@@ -928,10 +928,29 @@ const EXPORT_MAX_SECONDS = 60;
 let approvedExportSnapshot = null;
 
 function exportSnapshot() {
-  return JSON.stringify(projectData());
+  return JSON.stringify({
+    project: projectData(),
+    media: clips.map(c => ({ name: c.name, type: c.type, duration: c.duration, url: c.url || null })),
+    audioSource: audio.currentSrc || audio.src || null
+  });
+}
+
+function supportedMp4Type() {
+  if (!window.MediaRecorder || typeof MediaRecorder.isTypeSupported !== "function") return "";
+  return [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4"
+  ].find(type => MediaRecorder.isTypeSupported(type)) || "";
 }
 
 $("approveExport").onclick = () => {
+  const mp4Type = supportedMp4Type();
+  if (!mp4Type) {
+    $("renderExport").disabled = true;
+    approvedExportSnapshot = null;
+    status("exportStatus", "Ta przeglądarka nie zgłasza obsługi nagrywania MP4. Nie uruchamiamy renderowania ani nie tworzymy pliku WebM zamiast MP4.");
+    return;
+  }
   if (!clips.length) {
     status("exportStatus", "Nie ma scen do zatwierdzenia.");
     return;

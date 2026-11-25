@@ -153,7 +153,6 @@
       try { if (videoGain) videoGain.disconnect(); } catch (_) {}
       try { if (musicGain) musicGain.disconnect(); } catch (_) {}
       try {
-        if (musicSource) musicSource.disconnect();
         if (audioContext && !hasMusic && audioContext.state !== "closed") await audioContext.close();
       } catch (_) {}
     };
@@ -179,8 +178,7 @@
           if (!musicSource) {
             musicSource = audioContext.createMediaElementSource(audioElement);
             audioSources.set(audioElement, musicSource);
-          } else {
-            try { musicSource.disconnect(); } catch (_) {}
+            musicSource.connect(audioContext.destination);
           }
           musicGain = audioContext.createGain();
           musicGain.gain.value = volume;

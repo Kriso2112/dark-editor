@@ -5,8 +5,9 @@
     "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
     "video/mp4"
   ];
+  const audioSources = new WeakMap();
 
-  function waitEvent(target, success, failure, timeoutMs = 15000) {
+  function waitEvent(target, success, failure, timeoutMs = 20000) {
     return new Promise((resolve, reject) => {
       let timer;
       const clean = () => {
@@ -18,7 +19,10 @@
       const bad = () => { clean(); reject(new Error("Nie udało się wczytać materiału.")); };
       target.addEventListener(success, ok, { once: true });
       if (failure) target.addEventListener(failure, bad, { once: true });
-      timer = setTimeout(() => { clean(); reject(new Error("Przekroczono czas wczytywania materiału.")); }, timeoutMs);
+      timer = setTimeout(() => {
+        clean();
+        reject(new Error("Przekroczono czas wczytywania materiału."));
+      }, timeoutMs);
     });
   }
 
@@ -26,16 +30,20 @@
     const sw = source.videoWidth || source.naturalWidth || width;
     const sh = source.videoHeight || source.naturalHeight || height;
     if (!sw || !sh) return;
-    const scale = Math.min(width / sw, height / sh);
+    const scale = Math.max(width / sw, height / sh);
     const dw = sw * scale;
     const dh = sh * scale;
+    const sx = (dw - width) / 2;
+    const sy = (dh - height) / 2;
     ctx.fillStyle = "#000";
     ctx.fillRect(0, 0, width, height);
-    ctx.drawImage(source, (width - dw) / 2, (height - dh) / 2, dw, dh);
+    ctx.drawImage(source, -sx, -sy, dw, dh);
   }
 
   function drawSubtitles(ctx, subtitles, time, width, height) {
-    const item = subtitles.find(s => time >= Number(s.start) && time < Number(s.end));
+    const item = subtitles.find(s =>
+      time >= Number(s.start) && time < Number(s.end)
+    );
     if (!item) return;
     const text = String(item.text || "");
     const maxWidth = width * 0.88;
@@ -44,15 +52,16 @@
     ctx.font = "bold " + fontSize + "px Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const words = text.split(/\s+/);
     const lines = [];
     let line = "";
-    for (const word of words) {
+    for (const word of text.split(/\s+/)) {
       const test = line ? line + " " + word : word;
       if (ctx.measureText(test).width > maxWidth && line) {
         lines.push(line);
         line = word;
-      } else line = test;
+      } else {
+        line = test;
+      }
     }
     if (line) lines.push(line);
     const lineHeight = fontSize * 1.2;
@@ -73,87 +82,139 @@
     ctx.restore();
   }
 
+  function durationOf(clip) {
+    return Math.max(1, Math.min(600, Number(clip.duration) || 5));
+  }
+
   async function render(options) {
-    const clips = options.clips || [];
-    const subtitles = options.subtitles || [];
-    const audioElement = options.audioElement;
+    const clips = (options.clips || []).map(clip => ({ ...clip }));
+    const subtitles = (options.subtitles || []).map(item => ({ ...item }));
+    const audioElement = options.audioElement || null;
     const volume = Math.max(0, Math.min(1, Number(options.audioVolume ?? 0.5)));
     const width = Number(options.width) || 1280;
     const height = Number(options.height) || 720;
     const fps = Number(options.fps) || 30;
     const maxDurationSec = Number(options.maxDurationSec) || 60;
     const onProgress = typeof options.onProgress === "function" ? options.onProgress : () => {};
+    const total = clips.reduce((sum, clip) => sum + durationOf(clip), 0);
 
     if (!clips.length) throw new Error("Dodaj przynajmniej jedną scenę.");
-    if (clips.some(c => !c.url)) throw new Error("Brakuje plików. Przywróć materiały z galerii.");
-    const total = clips.reduce((sum, c) => sum + Math.max(1, Number(c.duration) || 5), 0);
-    if (total > maxDurationSec) throw new Error("Wersja testowa obsługuje maksymalnie " + maxDurationSec + " sekund filmu. Obecny projekt ma " + Math.ceil(total) + " s.");
-
+    if (clips.some(clip => !clip.url)) throw new Error("Brakuje plików. Przywróć materiały z galerii.");
+    if (total > maxDurationSec) {
+      throw new Error("Wersja testowa obsługuje maksymalnie " + maxDurationSec +
+        " sekund filmu. Obecny projekt ma " + Math.ceil(total) + " s.");
+    }
     if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
       throw new Error("Ta przeglądarka nie obsługuje nagrywania obrazu z Canvas.");
     }
+    if (typeof MediaRecorder.isTypeSupported !== "function") {
+      throw new Error("Przeglądarka nie potrafi potwierdzić obsługi formatu MP4.");
+    }
     const mimeType = MIME_CANDIDATES.find(type => MediaRecorder.isTypeSupported(type));
-    if (!mimeType) throw new Error("Ta przeglądarka nie obsługuje eksportu MP4. Plik WebM nie zostanie podstawiony zamiast MP4.");
+    if (!mimeType) {
+      throw new Error("Ta przeglądarka nie obsługuje eksportu MP4. Plik WebM nie zostanie podstawiony zamiast MP4.");
+    }
 
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) throw new Error("Nie można uruchomić Canvas.");
+
     const canvasStream = canvas.captureStream(fps);
-    let combinedStream = canvasStream;
-
-    if (audioElement && audioElement.src) {
-      const capture = audioElement.captureStream || audioElement.mozCaptureStream;
-      if (!capture) {
-        canvasStream.getTracks().forEach(track => track.stop());
-        throw new Error("Przeglądarka nie udostępnia przechwytywania muzyki. Usuń muzykę lub użyj innej przeglądarki do testu.");
-      }
-      const audioStream = capture.call(audioElement);
-      const audioTracks = audioStream.getAudioTracks();
-      if (!audioTracks.length) {
-        canvasStream.getTracks().forEach(track => track.stop());
-        throw new Error("Nie udało się przechwycić ścieżki audio z wybranego pliku.");
-      }
-      audioTracks.forEach(track => combinedStream.addTrack(track));
-    }
-
-    const chunks = [];
-    let recorder;
     const video = document.createElement("video");
     video.playsInline = true;
-    video.muted = true;
     video.preload = "auto";
+    video.loop = true;
+    video.muted = false;
+    video.volume = 1;
     video.setAttribute("playsinline", "");
 
+    let audioContext = null;
+    let audioDestination = null;
+    let videoGain = null;
+    let musicGain = null;
+    let videoSource = null;
+    let musicSource = null;
+    let recorder = null;
+    let stoppedPromise = null;
+    let completed = false;
+
     const stopTracks = () => {
-      combinedStream.getTracks().forEach(track => { try { track.stop(); } catch (_) {} });
+      canvasStream.getTracks().forEach(track => {
+        try { track.stop(); } catch (_) {}
+      });
+    };
+    const cleanupAudio = async () => {
+      try { if (videoGain) videoGain.disconnect(); } catch (_) {}
+      try { if (musicGain) musicGain.disconnect(); } catch (_) {}
+      try { if (audioContext && audioContext.state !== "closed") await audioContext.close(); } catch (_) {}
     };
 
     try {
-      recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 2500000 });
-      const stoppedPromise = new Promise((resolve, reject) => {
-        recorder.ondataavailable = event => { if (event.data && event.data.size) chunks.push(event.data); };
+      const hasVideoAudio = clips.some(clip => clip.type === "video");
+      const hasMusic = !!(audioElement && (audioElement.currentSrc || audioElement.src));
+      if (hasVideoAudio || hasMusic) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+          throw new Error("Ta przeglądarka nie obsługuje miksowania dźwięku. Eksport z audio został zatrzymany.");
+        }
+        audioContext = new AudioContextClass();
+        audioDestination = audioContext.createMediaStreamDestination();
+
+        if (hasVideoAudio) {
+          videoSource = audioContext.createMediaElementSource(video);
+          videoGain = audioContext.createGain();
+          videoGain.gain.value = 1;
+          videoSource.connect(videoGain);
+          videoGain.connect(audioDestination);
+        }
+        if (hasMusic) {
+          musicSource = audioSources.get(audioElement);
+          if (!musicSource) {
+            musicSource = audioContext.createMediaElementSource(audioElement);
+            audioSources.set(audioElement, musicSource);
+          }
+          musicGain = audioContext.createGain();
+          musicGain.gain.value = volume;
+          musicSource.connect(musicGain);
+          musicGain.connect(audioDestination);
+        }
+        if (audioContext.state === "suspended") await audioContext.resume();
+        audioDestination.stream.getAudioTracks().forEach(track => canvasStream.addTrack(track));
+      }
+
+      const chunks = [];
+      recorder = new MediaRecorder(canvasStream, {
+        mimeType,
+        videoBitsPerSecond: 2500000
+      });
+      if (!String(recorder.mimeType || mimeType).toLowerCase().startsWith("video/mp4")) {
+        throw new Error("Przeglądarka utworzyła inny format niż MP4. Plik nie zostanie zapisany.");
+      }
+
+      stoppedPromise = new Promise((resolve, reject) => {
+        recorder.ondataavailable = event => {
+          if (event.data && event.data.size) chunks.push(event.data);
+        };
         recorder.onerror = () => reject(new Error("Wystąpił błąd podczas nagrywania MP4."));
         recorder.onstop = resolve;
       });
       recorder.start(1000);
 
-      if (audioElement && audioElement.src) {
+      if (hasMusic) {
         audioElement.pause();
         audioElement.currentTime = 0;
-        audioElement.volume = volume;
         await audioElement.play().catch(() => {
           throw new Error("Nie udało się uruchomić muzyki. Sprawdź plik audio.");
         });
       }
 
       let elapsedTotal = 0;
-
       for (let index = 0; index < clips.length; index++) {
         const clip = clips[index];
-        const duration = Math.max(1, Number(clip.duration) || 5);
-        let source = null;
+        const duration = durationOf(clip);
+        let source;
 
         if (clip.type === "video") {
           video.pause();
@@ -163,7 +224,9 @@
           video.src = clip.url;
           await loaded;
           video.currentTime = 0;
-          await video.play();
+          await video.play().catch(() => {
+            throw new Error("Nie udało się odtworzyć filmu w scenie " + (index + 1) + ".");
+          });
           source = video;
         } else {
           const img = new Image();
@@ -179,7 +242,7 @@
           const globalElapsed = elapsedTotal + localElapsed;
           drawCover(ctx, source, width, height);
           drawSubtitles(ctx, subtitles, globalElapsed, width, height);
-          const progress = Math.min(99, Math.round(globalElapsed / total * 100));
+          const progress = Math.min(99, Math.floor(globalElapsed / total * 100));
           onProgress(progress, globalElapsed, total);
           await new Promise(resolve => requestAnimationFrame(resolve));
         }
@@ -187,25 +250,42 @@
         elapsedTotal += duration;
       }
 
-      if (audioElement) audioElement.pause();
+      if (hasMusic) audioElement.pause();
       if (recorder.state !== "inactive") recorder.stop();
       await stoppedPromise;
-      stopTracks();
-      onProgress(100, total, total);
+      completed = true;
+
       const blob = new Blob(chunks, { type: mimeType });
       if (!blob.size) throw new Error("Powstał pusty plik MP4.");
-      return { blob, filename: "dark-editor-export.mp4", mimeType, duration: total };
+      if (!blob.type.toLowerCase().startsWith("video/mp4")) {
+        throw new Error("Wynik nie ma prawidłowego typu MIME MP4.");
+      }
+      onProgress(100, total, total);
+      return {
+        blob,
+        filename: "dark-editor-export.mp4",
+        mimeType: blob.type,
+        duration: total
+      };
     } catch (error) {
       if (audioElement) audioElement.pause();
       if (recorder && recorder.state !== "inactive") {
         try { recorder.stop(); } catch (_) {}
       }
-      stopTracks();
+      if (stoppedPromise) {
+        try { await stoppedPromise; } catch (_) {}
+      }
       throw error;
     } finally {
+      if (audioElement) audioElement.pause();
       video.pause();
       video.removeAttribute("src");
       video.load();
+      stopTracks();
+      await cleanupAudio();
+      if (!completed && recorder && recorder.state !== "inactive") {
+        try { recorder.stop(); } catch (_) {}
+      }
     }
   }
 

@@ -141,6 +141,7 @@
     let recorder = null;
     let stoppedPromise = null;
     let completed = false;
+    const previousAudioVolume = audioElement ? audioElement.volume : null;
 
     const stopTracks = () => {
       canvasStream.getTracks().forEach(track => {
@@ -148,6 +149,7 @@
       });
     };
     const cleanupAudio = async () => {
+      try { if (videoSource) videoSource.disconnect(); } catch (_) {}
       try { if (videoGain) videoGain.disconnect(); } catch (_) {}
       try { if (musicGain) musicGain.disconnect(); } catch (_) {}
       try {
@@ -209,6 +211,7 @@
 
       if (hasMusic) {
         audioElement.pause();
+        audioElement.volume = 1;
         audioElement.currentTime = 0;
         await audioElement.play().catch(() => {
           throw new Error("Nie udało się uruchomić muzyki. Sprawdź plik audio.");
@@ -282,7 +285,10 @@
       }
       throw error;
     } finally {
-      if (audioElement) audioElement.pause();
+      if (audioElement) {
+        audioElement.pause();
+        if (previousAudioVolume !== null) audioElement.volume = previousAudioVolume;
+      }
       video.pause();
       video.removeAttribute("src");
       video.load();

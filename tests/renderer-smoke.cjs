@@ -45,8 +45,34 @@ const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/cs
     if (!status || !/(MP4|scen do zatwierdzenia)/i.test(status)) {
       throw new Error("Unexpected approval-gate result: " + status);
     }
+    if (!loaded.mp4) throw new Error("CI Chromium does not support MP4; actual renderer test cannot run.");
+
+    const rendered = await page.evaluate(async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 96; canvas.height = 54;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#d6ad55"; ctx.fillRect(0, 0, 96, 54);
+      ctx.fillStyle = "#090909"; ctx.font = "bold 14px Arial";
+      ctx.fillText("DARK QA", 8, 30);
+      const imageBlob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+      const imageUrl = URL.createObjectURL(imageBlob);
+      try {
+        const result = await window.DarkLocalRenderer.render({
+          clips: [{ name: "qa-still.png", type: "image", url: imageUrl, duration: 1 }],
+          subtitles: [{ text: "QA SUBTITLE", start: 0.2, end: 0.8, position: "bottom" }],
+          width: 320, height: 180, fps: 10, maxDurationSec: 5
+        });
+        return { size: result.blob.size, type: result.blob.type, filename: result.filename, duration: result.duration };
+      } finally {
+        URL.revokeObjectURL(imageUrl);
+      }
+    });
+    if (!rendered.size || !String(rendered.type).toLowerCase().startsWith("video/mp4") ||
+        rendered.filename !== "dark-editor-export.mp4" || rendered.duration !== 1) {
+      throw new Error("Actual MP4 render returned an invalid result: " + JSON.stringify(rendered));
+    }
     if (errors.length) throw new Error("Browser JavaScript errors: " + errors.join(" | "));
-    console.log("PASS: renderer script loads; empty projects are rejected; export approval gate responds safely. Chromium MP4 support: " + loaded.mp4);
+    console.log("PASS: renderer loads; empty projects are rejected; approval gate works; one still image with subtitle renders to a non-empty MP4. Output: " + JSON.stringify(rendered));
   } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));

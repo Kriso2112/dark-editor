@@ -1,0 +1,36 @@
+name: DARK EDITOR test
+on:
+  push:
+    branches: [fix/dark-editor-test-media-replacement]
+    paths:
+      - "dark-editor-test/**"
+      - "tests/**"
+      - ".github/workflows/dark-editor-test.yml"
+  pull_request:
+    paths:
+      - "dark-editor-test/**"
+      - "tests/**"
+      - ".github/workflows/dark-editor-test.yml"
+  workflow_dispatch:
+
+jobs:
+  browser-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        run: npm install --no-save @playwright/test
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Start local server
+        run: |
+          python3 -m http.server 4173 --directory . > /tmp/dark-editor-server.log 2>&1 &
+          for i in {1..20}; do
+            curl -fsS http://127.0.0.1:4173/dark-editor-test/ > /dev/null && break
+            sleep 1
+          done
+      - name: Run browser tests
+        run: npx playwright test tests/dark-editor-test.spec.js --reporter=list

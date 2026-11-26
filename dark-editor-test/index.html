@@ -250,8 +250,9 @@ function saveProjectSnapshot() {
 
   return Promise.all([...media,audioPromise]).then(records=>{
     const valid=records.filter(Boolean);
+    // Upsert successfully read media. Never erase the previous good backup
+    // merely because a clip is temporarily unavailable or needs relinking.
     return mediaTransaction("readwrite",store=>{
-      store.clear();
       valid.forEach(record=>store.put({...record,projectId:PROJECT_ID}));
     }).then(()=>{
       data.mediaStorage="indexeddb";
@@ -555,6 +556,7 @@ function projectData() {
       type:c.type,
       duration:c.duration
     })),
+    selectedClip: selected,
     subtitles,
     scriptText:$("scriptInput").value,
     storyboard,
@@ -582,8 +584,11 @@ function addMediaFiles(fileList) {
     }
 
     let existing=null;
-    if (fileIndex===0 && Number.isInteger(targetIndex) && clips[targetIndex] &&
-        !clips[targetIndex].url && clips[targetIndex].type===type) {
+    // When the user explicitly chooses "ZAMIEŃ PLIK", replace that
+    // timeline item's media even if its previous URL is still valid.
+    // Keep its ID so the IndexedDB record is updated under the same key.
+    if (fileIndex===0 && Number.isInteger(targetIndex) &&
+        clips[targetIndex] && clips[targetIndex].type===type) {
       existing=clips[targetIndex];
     }
     if (!existing) {
@@ -947,7 +952,9 @@ async function restoreProject(data) {
     url:null
   }));
 
-  selected=-1;
+  selected=Number.isInteger(data.selectedClip) &&
+    data.selectedClip>=0 && data.selectedClip<clips.length
+      ? data.selectedClip : -1;
 
   subtitles=Array.isArray(data.subtitles)
     ?data.subtitles.map(s=>({
@@ -996,6 +1003,9 @@ async function restoreProject(data) {
   renderSubtitles();
   await restoreMediaForProject();
   renderClips();
+  if (selected>=0 && clips[selected] && clips[selected].url) {
+    selectClip(selected);
+  }
   status("saveStatus",clips.some(c=>!c.url)
     ? "Projekt wczytany. Niektóre pliki wymagają ponownego wskazania."
     : "Projekt i zapisane materiały zostały przywrócone.");

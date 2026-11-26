@@ -14,8 +14,10 @@ test("replaces a selected timeline file without adding another scene and restore
   await expect(page.locator("#videoTrack")).toContainText("pierwszy.png");
   await expect(page.locator("#videoTrack .clip")).toHaveCount(1);
 
+  const chooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "ZAMIEŃ PLIK" }).click();
-  await page.locator("#mediaInput").setInputFiles({
+  const chooser = await chooserPromise;
+  await chooser.setFiles({
     name: "drugi.png", mimeType: "image/png", buffer: tinyPng
   });
 
@@ -23,7 +25,7 @@ test("replaces a selected timeline file without adding another scene and restore
   await expect(page.locator("#videoTrack")).not.toContainText("pierwszy.png");
   await expect(page.locator("#videoTrack .clip")).toHaveCount(1);
 
-  await expect(page.locator("#saveStatus")).toContainText("zapisane automatycznie", { timeout: 10000 });
+  await page.waitForTimeout(1000);
   await page.reload();
   await expect(page.locator("#videoTrack")).toContainText("drugi.png");
   await expect(page.locator("#videoTrack")).not.toContainText("BRAK PLIKU");

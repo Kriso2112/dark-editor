@@ -24,6 +24,12 @@ test("exports a real MP4 file from a one-second still-image project", async ({ p
 
   const downloadPromise = page.waitForEvent("download", { timeout: 210000 });
   await page.locator("#exportMp4").click();
+  await expect.poll(async () => page.locator("#exportStatus").textContent(), {
+    timeout: 210000,
+    message: "Eksport powinien zakończyć się sukcesem albo pokazać konkretny błąd."
+  }).toMatch(/Gotowe|Eksport nie powiódł się/);
+  const exportStatus = await page.locator("#exportStatus").textContent();
+  expect(exportStatus, `Szczegóły błędu eksportu: ${exportStatus}`).toContain("Gotowe");
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.mp4$/i);
   const path = await download.path();

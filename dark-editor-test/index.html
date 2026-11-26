@@ -582,8 +582,11 @@ function addMediaFiles(fileList) {
     }
 
     let existing=null;
-    if (fileIndex===0 && Number.isInteger(targetIndex) && clips[targetIndex] &&
-        !clips[targetIndex].url && clips[targetIndex].type===type) {
+    // When the user explicitly chooses "ZAMIEŃ PLIK", replace that
+    // timeline item's media even if its previous URL is still valid.
+    // Keep its ID so the IndexedDB record is updated under the same key.
+    if (fileIndex===0 && Number.isInteger(targetIndex) &&
+        clips[targetIndex] && clips[targetIndex].type===type) {
       existing=clips[targetIndex];
     }
     if (!existing) {

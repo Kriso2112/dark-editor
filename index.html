@@ -1001,7 +1001,7 @@ async function restoreProject(data) {
     : "Projekt i zapisane materiały zostały przywrócone.");
 }
 
-$("loadProject").onclick=()=>{
+$("loadProject").onclick=async()=>{
   try {
     let saved=localStorage.getItem(STORAGE_KEY);
 

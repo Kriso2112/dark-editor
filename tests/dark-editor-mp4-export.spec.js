@@ -33,6 +33,11 @@ test("exports a real MP4 file from a one-second still-image project", async ({ p
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.mp4$/i);
   const path = await download.path();
-  expect(fs.statSync(path).size).toBeGreaterThan(1024);
+  const stats = fs.statSync(path);
+  expect(stats.size).toBeGreaterThan(1024);
+  const header = Buffer.alloc(12);
+  const fd = fs.openSync(path, "r");
+  try { fs.readSync(fd, header, 0, header.length, 0); } finally { fs.closeSync(fd); }
+  expect(header.toString("ascii", 4, 8)).toBe("ftyp");
   await expect(page.locator("#exportStatus")).toContainText("Gotowe", { timeout: 5000 });
 });

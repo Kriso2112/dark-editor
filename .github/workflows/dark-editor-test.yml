@@ -1,7 +1,7 @@
 name: DARK EDITOR test
 on:
   push:
-    branches: [fix/dark-editor-test-media-replacement]
+    branches: [fix/dark-editor-test-media-replacement, feat/dark-editor-mp4-export]
     paths:
       - "dark-editor-test/**"
       - "tests/**"

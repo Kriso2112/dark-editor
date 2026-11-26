@@ -17,6 +17,8 @@ test("restores project settings, subtitles, storyboard, clips and audio after re
     { name: "scena-b.png", mimeType: "image/png", buffer: tinyPng }
   ]);
   await expect(page.locator("#videoTrack .clip")).toHaveCount(2);
+  await page.locator("#videoTrack .clip").nth(1).getByRole("button", { name: "EDYTUJ SCENĘ" }).click();
+  await expect(page.locator("#videoTrack .clip.selected")).toHaveCount(1);
 
   await page.locator("#projectName").fill("Test trwałego projektu");
   await page.locator("#manualMode").click();
@@ -41,6 +43,8 @@ test("restores project settings, subtitles, storyboard, clips and audio after re
   await expect(page.locator("#projectName")).toHaveValue("Test trwałego projektu");
   await expect(page.locator("#modeInfo")).toContainText("Tryb ręczny");
   await expect(page.locator("#videoTrack .clip")).toHaveCount(2);
+  await expect(page.locator("#videoTrack .clip.selected")).toHaveCount(1);
+  await expect(page.locator("#videoTrack .clip").nth(1)).toHaveClass(/selected/);
   await expect(page.locator("#subtitleList")).toContainText("Ważny napis testowy");
   await expect(page.locator("#scriptInput")).toHaveValue("Pierwsza scena. Druga scena. Trzecia scena.");
   await expect(page.locator("#storyboardList")).not.toBeEmpty();

@@ -79,12 +79,16 @@ function wavBuffer(seconds = 1, sampleRate = 8000) {
         photoSrc: document.querySelector("#photo").getAttribute("src"),
         recordHasImageBlob: record?.clips?.[0]?.blob instanceof Blob,
         recordHasAudioBlob: record?.audioBlob instanceof Blob,
+        script: document.querySelector("#scriptInput").value,
+        storyboard: document.querySelector("#storyboardList").textContent,
         recordName: record?.data?.name
       };
     });
     if (after.name !== "QA persistence project" || !after.duration.includes("9 s") ||
         !after.subtitle.includes("QA NAPIS") || !after.audioStatus.includes("przywrócone") ||
         !after.photoSrc || !after.recordHasImageBlob || !after.recordHasAudioBlob ||
+        !after.script.includes("Pierwsza scena testowa") ||
+        !after.storyboard.includes("Pierwsza scena testowa") ||
         after.recordName !== "QA persistence project") {
       throw new Error("Persistence restore failed: " + JSON.stringify(after));
     }

@@ -1004,7 +1004,12 @@ async function getFFmpeg() {
   ffmpeg.on("log",({message})=>{
     if(message) $("exportProgress").textContent=message.slice(-180);
   });
+  // FFmpeg's default worker is imported from the CDN, which browsers block
+  // as a cross-origin Worker. Serve the worker and its ES-module dependencies
+  // from this project (same origin) instead.
+  const workerURL=new URL("./ffmpeg/worker.js",document.baseURI).href;
   await ffmpeg.load({
+    classWorkerURL:workerURL,
     coreURL:await toBlobURL(base+"/ffmpeg-core.js","text/javascript"),
     wasmURL:await toBlobURL(base+"/ffmpeg-core.wasm","application/wasm")
   });

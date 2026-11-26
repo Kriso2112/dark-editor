@@ -166,8 +166,23 @@ Oddziel kolejne części pustą linią."></textarea>
 <p class="small warning">Po wczytaniu zapisu wybierz ponownie pliki z galerii. Edytor dopasuje je do zapisanych scen po nazwach.</p>
 </section>
 
+<section>
+<h2>10. EKSPORT MP4 — TESTOWY</h2>
+<p class="small">Przed renderowaniem sprawdź podgląd, kolejność scen, napisy i muzykę. Render lokalny działa w czasie rzeczywistym — nie zamykaj karty ani nie blokuj ekranu telefonu.</p>
+<div class="row">
+<button id="approveExport">ZATWIERDŹ PROJEKT DO RENDERU</button>
+<button id="renderExport" disabled>RENDERUJ MP4</button>
+</div>
+<div class="status" id="exportStatus">Najpierw zatwierdź gotowy projekt.</div>
+<div style="height:8px;background:#090909;border:1px solid #66532c;border-radius:8px;overflow:hidden;margin-top:10px">
+  <div id="exportProgress" style="height:100%;width:0%;background:#d6ad55;transition:width .15s"></div>
+</div>
+<p class="small warning">Limit wersji testowej: 60 sekund, 720p, 30 kl./s. Eksport jest dostępny tylko wtedy, gdy przeglądarka obsługuje MP4. DARK EDITOR nie zapisze po cichu pliku WebM zamiast MP4.</p>
+</section>
+
 <footer>DARK EDITOR 0.9.0 • BLACK & GOLD</footer>
 
+<script src="js/local-renderer.js"></script>
 <script>
 (() => {
 "use strict";
@@ -905,6 +920,103 @@ $("loadProject").onclick=()=>{
     restoreProject(JSON.parse(saved));
   } catch (e) {
     alert("Nie udało się wczytać projektu: "+e.message);
+  }
+};
+
+
+const EXPORT_MAX_SECONDS = 60;
+let approvedExportSnapshot = null;
+
+function exportSnapshot() {
+  return JSON.stringify({
+    project: projectData(),
+    media: clips.map(c => ({ name: c.name, type: c.type, duration: c.duration, url: c.url || null })),
+    audioSource: audio.currentSrc || audio.src || null
+  });
+}
+
+function supportedMp4Type() {
+  if (!window.MediaRecorder || typeof MediaRecorder.isTypeSupported !== "function") return "";
+  return [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4"
+  ].find(type => MediaRecorder.isTypeSupported(type)) || "";
+}
+
+$("approveExport").onclick = () => {
+  const mp4Type = supportedMp4Type();
+  if (!mp4Type) {
+    $("renderExport").disabled = true;
+    approvedExportSnapshot = null;
+    status("exportStatus", "Ta przeglądarka nie zgłasza obsługi nagrywania MP4. Nie uruchamiamy renderowania ani nie tworzymy pliku WebM zamiast MP4.");
+    return;
+  }
+  if (!clips.length) {
+    status("exportStatus", "Nie ma scen do zatwierdzenia.");
+    return;
+  }
+  if (clips.some(c => !c.url)) {
+    status("exportStatus", "Brakuje plików. Przywróć wszystkie materiały z galerii.");
+    return;
+  }
+  const total = clips.reduce((sum, c) => sum + safeDuration(c.duration), 0);
+  if (total > EXPORT_MAX_SECONDS) {
+    status("exportStatus", "Projekt ma " + Math.ceil(total) + " s. Wersja testowa obsługuje maksymalnie 60 s.");
+    return;
+  }
+  approvedExportSnapshot = exportSnapshot();
+  $("renderExport").disabled = false;
+  status("exportStatus", "Projekt zatwierdzony. Czas filmu: " + Math.ceil(total) + " s. Możesz rozpocząć renderowanie MP4.");
+};
+
+$("renderExport").onclick = async () => {
+  if (!approvedExportSnapshot || approvedExportSnapshot !== exportSnapshot()) {
+    approvedExportSnapshot = null;
+    $("renderExport").disabled = true;
+    status("exportStatus", "Projekt zmienił się od zatwierdzenia. Zatwierdź go ponownie przed renderowaniem.");
+    return;
+  }
+  if (!window.DarkLocalRenderer) {
+    status("exportStatus", "Nie udało się załadować modułu renderowania.");
+    return;
+  }
+
+  $("renderExport").disabled = true;
+  $("approveExport").disabled = true;
+  $("exportProgress").style.width = "0%";
+  status("exportStatus", "Renderowanie rozpoczęte. Nie zamykaj tej karty i nie blokuj ekranu.");
+
+  try {
+    const result = await window.DarkLocalRenderer.render({
+      clips,
+      subtitles,
+      audioElement: audio,
+      audioVolume: Number($("volumeInput").value) / 100,
+      width: 1280,
+      height: 720,
+      fps: 30,
+      maxDurationSec: EXPORT_MAX_SECONDS,
+      onProgress: (percent, elapsed, total) => {
+        $("exportProgress").style.width = percent + "%";
+        status("exportStatus", "Renderowanie MP4: " + percent + "% (" + Math.floor(elapsed) + " / " + Math.ceil(total) + " s)");
+      }
+    });
+
+    const url = URL.createObjectURL(result.blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = result.filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    status("exportStatus", "Gotowe! Przygotowano plik MP4 (" + (result.blob.size / 1024 / 1024).toFixed(1) + " MB). Sprawdź folder Pobrane i odtwórz film.");
+    $("exportProgress").style.width = "100%";
+  } catch (error) {
+    status("exportStatus", "Eksport nie powiódł się: " + (error && error.message ? error.message : "Nieznany błąd"));
+    $("renderExport").disabled = false;
+  } finally {
+    $("approveExport").disabled = false;
   }
 };
 

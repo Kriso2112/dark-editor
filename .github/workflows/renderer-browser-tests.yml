@@ -1,0 +1,25 @@
+name: DARK EDITOR renderer browser smoke tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/mp4-export-stabilization]
+
+permissions:
+  contents: read
+
+jobs:
+  renderer-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        run: npm install --no-save playwright
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run renderer browser smoke tests
+        run: node tests/renderer-smoke.cjs

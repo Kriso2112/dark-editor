@@ -162,8 +162,8 @@ Oddziel kolejne części pustą linią."></textarea>
 <button id="loadProject">WCZYTAJ ZAPIS</button>
 </div>
 <div id="saveStatus" class="status">Projekt nie został zapisany.</div>
-<p class="small">Projekt zapisuje ustawienia, kolejność scen, napisy i głośność. Filmy i muzykę trzeba ponownie wybrać z galerii po ponownym otwarciu strony.</p>
-<p class="small warning">Po wczytaniu zapisu wybierz ponownie pliki z galerii. Edytor dopasuje je do zapisanych scen po nazwach.</p>
+<p class="small">Nowy zapis przechowuje ustawienia projektu oraz wybrane filmy, zdjęcia i audio w pamięci przeglądarki na tym urządzeniu.</p>
+<p class="small warning">Starsze projekty mogą wymagać ponownego wskazania plików. Wyczyszczenie danych witryny lub pamięci przeglądarki może usunąć zapisane materiały.</p>
 </section>
 
 <footer>DARK EDITOR 0.9.0 • BLACK & GOLD</footer>
@@ -184,7 +184,71 @@ let clips = [];
 let subtitles = [];
 let selected = -1;
 let audioUrl = null;
+let audioFile = null;
 let audioName = "";
+let saveTimer = null;
+let saveQueue = Promise.resolve();
+
+const DB_NAME = "darkEditorDatabase";
+const DB_VERSION = 1;
+const DB_STORE = "projects";
+const DB_PROJECT_KEY = "current";
+
+function openProjectDatabase() {
+  return new Promise((resolve,reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("Ta przeglądarka nie obsługuje IndexedDB."));
+      return;
+    }
+    const request = indexedDB.open(DB_NAME,DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Nie można otworzyć bazy projektu."));
+    request.onblocked = () => reject(new Error("Baza projektu jest zablokowana przez inną kartę."));
+  });
+}
+
+async function writeProjectRecord(record) {
+  const db = await openProjectDatabase();
+  try {
+    await new Promise((resolve,reject) => {
+      const tx = db.transaction(DB_STORE,"readwrite");
+      tx.objectStore(DB_STORE).put(record,DB_PROJECT_KEY);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error || new Error("Nie udało się zapisać danych projektu."));
+      tx.onabort = () => reject(tx.error || new Error("Zapis projektu został przerwany."));
+    });
+  } finally { db.close(); }
+}
+
+async function readProjectRecord() {
+  const db = await openProjectDatabase();
+  try {
+    return await new Promise((resolve,reject) => {
+      const tx = db.transaction(DB_STORE,"readonly");
+      const request = tx.objectStore(DB_STORE).get(DB_PROJECT_KEY);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error("Nie udało się odczytać projektu."));
+    });
+  } finally { db.close(); }
+}
+
+function createProjectRecord() {
+  return {
+    data: projectData(),
+    clips: clips.map(c => ({name:c.name,type:c.type,duration:c.duration,blob:c.file || null})),
+    audioBlob:audioFile || null
+  };
+}
+
+async function persistProject() {
+  const record = createProjectRecord();
+  await writeProjectRecord(record);
+  try { localStorage.setItem(STORAGE_KEY,JSON.stringify(record.data)); } catch (_) {}
+}
 let playing = false;
 let playToken = 0;
 let pendingClipIndex = null;
@@ -452,9 +516,21 @@ function projectData() {
 }
 
 function saveSilently() {
-  try {
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(projectData()));
-  } catch (_) {}
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    saveQueue = saveQueue
+      .then(() => persistProject())
+      .then(() => status("saveStatus","Automatycznie zapisano projekt i dostępne pliki."))
+      .catch(error => {
+        try {
+          localStorage.setItem(STORAGE_KEY,JSON.stringify(projectData()));
+          status("saveStatus","Zapisano ustawienia, ale nie pliki. Błąd pamięci: "+error.message);
+        } catch (_) {
+          status("saveStatus","BŁĄD ZAPISU: "+error.message+". Zwolnij miejsce lub sprawdź ustawienia przeglądarki.");
+        }
+      });
+  },500);
 }
 
 function addMediaFiles(fileList) {
@@ -486,9 +562,10 @@ function addMediaFiles(fileList) {
     if (existing) {
       if (existing.url) URL.revokeObjectURL(existing.url);
       existing.url=url;
+      existing.file=file;
       existing.name=file.name;
     } else {
-      clips.push({name:file.name,type,url,duration:5});
+      clips.push({name:file.name,type,url,file,duration:5});
     }
     added++;
   });
@@ -625,6 +702,7 @@ $("audioInput").addEventListener("change",e=>{
   if (audioUrl) URL.revokeObjectURL(audioUrl);
 
   audioUrl=URL.createObjectURL(file);
+  audioFile=file;
   audioName=file.name;
   audio.src=audioUrl;
   audio.load();
@@ -808,16 +886,22 @@ $("manualMode").onclick=()=>{
   saveSilently();
 };
 
-$("saveProject").onclick=()=>{
+$("saveProject").onclick=async()=>{
+  status("saveStatus","Zapisywanie projektu i plików...");
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
   try {
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(projectData()));
-    status("saveStatus","Projekt 0.9.0 zapisany w pamięci przeglądarki.");
-  } catch (_) {
-    status("saveStatus","Nie udało się zapisać projektu.");
+    await saveQueue;
+    await persistProject();
+    status("saveStatus","Projekt i dostępne pliki zapisane na tym urządzeniu.");
+  } catch (error) {
+    status("saveStatus","NIE UDAŁO SIĘ ZAPISAĆ PLIKÓW: "+error.message);
   }
 };
 
-function restoreProject(data) {
+async function restoreProject(data,record=null) {
   if (!data||!Array.isArray(data.clips)) {
     throw new Error("Nieprawidłowy zapis projektu.");
   }
@@ -828,12 +912,18 @@ function restoreProject(data) {
     if (c.url) URL.revokeObjectURL(c.url);
   });
 
-  clips=data.clips.map(c=>({
-    name:String(c.name||"Nieznany plik"),
-    type:c.type==="image"?"image":"video",
-    duration:safeDuration(c.duration),
-    url:null
-  }));
+  const savedClips=Array.isArray(record?.clips)?record.clips:[];
+  clips=data.clips.map((c,index)=>{
+    const saved=savedClips[index];
+    const blob=saved?.blob instanceof Blob?saved.blob:null;
+    return {
+      name:String(c.name||saved?.name||"Nieznany plik"),
+      type:c.type==="image"?"image":"video",
+      duration:safeDuration(c.duration),
+      file:blob,
+      url:blob?URL.createObjectURL(blob):null
+    };
+  });
 
   selected=-1;
 
@@ -866,14 +956,21 @@ function restoreProject(data) {
     URL.revokeObjectURL(audioUrl);
     audioUrl=null;
   }
-
   audio.removeAttribute("src");
   audio.load();
+  audioFile=record?.audioBlob instanceof Blob?record.audioBlob:null;
+  if (audioFile) {
+    audioUrl=URL.createObjectURL(audioFile);
+    audio.src=audioUrl;
+    audio.load();
+  }
   audioName=String(data.audioName||"");
   $("audioTrack").textContent=audioName||"Brak muzyki.";
-  status("audioStatus",audioName
-    ?"Muzykę trzeba ponownie wybrać z galerii."
-    :"Nie dodano audio.");
+  status("audioStatus",audioFile
+    ?"Muzyka i lektor zostały przywrócone."
+    :audioName
+      ?"Muzykę trzeba ponownie wybrać z galerii."
+      :"Nie dodano audio.");
 
   showEmpty();
   $("caption").textContent="";
@@ -882,51 +979,60 @@ function restoreProject(data) {
 
   renderClips();
   renderSubtitles();
+  if (clips.length && clips[0].url) selectClip(0);
 
   status("saveStatus",
-    "Wczytano projekt. Teraz ponownie wybierz pliki z galerii.");
+    clips.length && clips.every(c=>c.url)
+      ? "Wczytano projekt wraz z plikami multimedialnymi."
+      : clips.length
+        ? "Wczytano ustawienia. Brakujące pliki wybierz ponownie z galerii."
+        : "Wczytano ustawienia projektu. Nie zapisano materiałów multimedialnych.");
 }
 
-$("loadProject").onclick=()=>{
+$("loadProject").onclick=async()=>{
   try {
+    status("saveStatus","Odczytywanie zapisanego projektu...");
+    const record=await readProjectRecord().catch(()=>null);
+    if (record?.data) {
+      await restoreProject(record.data,record);
+      return;
+    }
     let saved=localStorage.getItem(STORAGE_KEY);
-
     if (!saved) {
       for (const key of OLD_KEYS) {
         saved=localStorage.getItem(key);
         if (saved) break;
       }
     }
-
-    if (!saved) {
-      return alert("Nie znaleziono zapisanego projektu.");
-    }
-
-    restoreProject(JSON.parse(saved));
+    if (!saved) return alert("Nie znaleziono zapisanego projektu.");
+    await restoreProject(JSON.parse(saved));
   } catch (e) {
+    status("saveStatus","BŁĄD WCZYTYWANIA: "+e.message);
     alert("Nie udało się wczytać projektu: "+e.message);
   }
 };
 
 $("projectName").addEventListener("change",saveSilently);
 
-try {
-  let saved=localStorage.getItem(STORAGE_KEY);
-
-  if (!saved) {
-    for (const key of OLD_KEYS) {
-      saved=localStorage.getItem(key);
-      if (saved) break;
+(async()=>{
+  try {
+    const record=await readProjectRecord().catch(()=>null);
+    if (record?.data) {
+      await restoreProject(record.data,record);
+      return;
     }
+    let saved=localStorage.getItem(STORAGE_KEY);
+    if (!saved) {
+      for (const key of OLD_KEYS) {
+        saved=localStorage.getItem(key);
+        if (saved) break;
+      }
+    }
+    if (saved) await restoreProject(JSON.parse(saved));
+  } catch (error) {
+    status("saveStatus","Nie udało się odczytać poprzedniego zapisu: "+error.message);
   }
-
-  if (saved) {
-    const data=JSON.parse(saved);
-    restoreProject(data);
-  }
-} catch (_) {
-  status("saveStatus","Nie udało się odczytać poprzedniego zapisu.");
-}
+})();
 
 })();
 </script>

@@ -69,8 +69,19 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 <div class="status" id="playStatus">Gotowy do pracy.</div>
 </section>
 
+<section id="exportSection">
+<h2>3. EKSPORT GOTOWEGO FILMU</h2>
+<p class="small">Eksport tworzy plik MP4 z kolejnością scen, czasami, muzyką i napisami z osi montażu. Przetwarzanie odbywa się w przeglądarce; na telefonie może potrwać dłużej.</p>
+<div class="row">
+<button id="exportMp4">⬇ EKSPORTUJ MP4</button>
+</div>
+<div id="exportStatus" class="status" role="status" aria-live="polite">Gotowy do eksportu.</div>
+<div id="exportProgress" class="small"></div>
+<p class="small warning">Wskazówka: na Androidzie zacznij od krótkiego filmu. Eksport MP4 wymaga dodatkowego silnika FFmpeg WebAssembly i wolnej pamięci urządzenia. Nie zamykaj karty podczas eksportu.</p>
+</section>
+
 <section>
-<h2>3. DODAJ FILMY I ZDJĘCIA</h2>
+<h2>4. DODAJ FILMY I ZDJĘCIA</h2>
 <label class="filebtn" for="mediaInput">＋ WYBIERZ Z GALERII</label>
 <input id="mediaInput" type="file" accept="video/*,image/*,.mp4,.mov,.webm,.jpg,.jpeg,.png,.webp" multiple class="hidden">
 <p class="small">Możesz zaznaczyć kilka filmów i zdjęć. Po wybraniu poczekaj, aż pojawią się na osi czasu.</p>
@@ -906,6 +917,273 @@ async function playSequence() {
     status("playStatus","Montaż zakończony.");
   }
 }
+
+
+const MP4_EXPORT = {
+  width: 1280,
+  height: 720,
+  fps: 30,
+  maxSeconds: 600,
+  ffmpeg: null
+};
+
+const exportDelay = ms => new Promise(resolve=>setTimeout(resolve,ms));
+
+function drawExportFrame(ctx,source,width,height) {
+  ctx.fillStyle="#000";
+  ctx.fillRect(0,0,width,height);
+  if (!source || !source.videoWidth && !source.naturalWidth) return;
+  const sw=source.videoWidth||source.naturalWidth;
+  const sh=source.videoHeight||source.naturalHeight;
+  if (!sw||!sh) return;
+  const scale=Math.min(width/sw,height/sh);
+  const dw=sw*scale, dh=sh*scale;
+  ctx.drawImage(source,(width-dw)/2,(height-dh)/2,dw,dh);
+}
+
+function drawExportSubtitle(ctx,time,width,height) {
+  const active=subtitles.find(item=>time>=Number(item.start)&&time<Number(item.end));
+  if(!active) return;
+  const text=String(active.text||"");
+  const fontSize=36;
+  const maxWidth=width*.88;
+  ctx.save();
+  ctx.font="bold "+fontSize+"px Arial";
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  const words=text.split(/\s+/);
+  const lines=[];
+  let line="";
+  for(const word of words) {
+    const next=line?line+" "+word:word;
+    if(ctx.measureText(next).width>maxWidth&&line) {
+      lines.push(line);
+      line=word;
+    } else line=next;
+  }
+  if(line) lines.push(line);
+  const lineHeight=fontSize*1.25;
+  const blockHeight=lines.length*lineHeight;
+  const y=active.position==="top"?height*.12:
+    active.position==="middle"?height*.5:height*.86;
+  ctx.fillStyle="rgba(0,0,0,.58)";
+  ctx.fillRect(width*.04,y-blockHeight/2-12,width*.92,blockHeight+24);
+  ctx.fillStyle="#fff";
+  ctx.shadowColor="#000";
+  ctx.shadowBlur=4;
+  lines.forEach((value,index)=>ctx.fillText(value,width/2,y-blockHeight/2+lineHeight*(index+.5)));
+  ctx.restore();
+}
+
+async function loadExportVideo(url) {
+  const element=document.createElement("video");
+  element.playsInline=true;
+  element.preload="auto";
+  element.src=url;
+  await new Promise((resolve,reject)=>{
+    const done=()=>{cleanup();resolve();};
+    const fail=()=>{cleanup();reject(new Error("Nie można wczytać jednego z filmów."));};
+    const cleanup=()=>{
+      element.removeEventListener("loadeddata",done);
+      element.removeEventListener("error",fail);
+    };
+    element.addEventListener("loadeddata",done,{once:true});
+    element.addEventListener("error",fail,{once:true});
+    element.load();
+  });
+  return element;
+}
+
+async function getFFmpeg() {
+  if(MP4_EXPORT.ffmpeg) return MP4_EXPORT.ffmpeg;
+  status("exportStatus","Pobieranie silnika MP4 (FFmpeg WebAssembly)...");
+  const {FFmpeg}=await import("https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js");
+  const {toBlobURL}=await import("https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js");
+  const base="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm";
+  const ffmpeg=new FFmpeg();
+  ffmpeg.on("log",({message})=>{
+    if(message) $("exportProgress").textContent=message.slice(-180);
+  });
+  // FFmpeg's default worker is imported from the CDN, which browsers block
+  // as a cross-origin Worker. Serve the worker and its ES-module dependencies
+  // from this project (same origin) instead.
+  const workerURL=new URL("./ffmpeg/worker.js",document.baseURI).href;
+  await ffmpeg.load({
+    classWorkerURL:workerURL,
+    coreURL:await toBlobURL(base+"/ffmpeg-core.js","text/javascript"),
+    wasmURL:await toBlobURL(base+"/ffmpeg-core.wasm","application/wasm")
+  });
+  MP4_EXPORT.ffmpeg=ffmpeg;
+  return ffmpeg;
+}
+
+async function exportMp4() {
+  const button=$("exportMp4");
+  if(!clips.length) {
+    status("exportStatus","Najpierw dodaj materiały na oś czasu.");
+    return;
+  }
+  if(clips.some(item=>!item.url)) {
+    status("exportStatus","Niektóre sceny nie mają plików. Uzupełnij je przed eksportem.");
+    return;
+  }
+  const total=clips.reduce((sum,item)=>sum+safeDuration(item.duration),0);
+  if(total>MP4_EXPORT.maxSeconds) {
+    status("exportStatus","Projekt przekracza limit eksportu 10 minut. Podziel go na krótsze części.");
+    return;
+  }
+  if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream) {
+    status("exportStatus","Ta przeglądarka nie obsługuje nagrywania obrazu do eksportu.");
+    return;
+  }
+  button.disabled=true;
+  $("exportProgress").textContent="";
+  let canvasStream=null, recorder=null, audioContext=null, clipVideo=null, music=null;
+  let clipSource=null, musicSource=null, clipGain=null, musicGain=null, audioDestination=null;
+  let downloadUrl=null;
+  try {
+    stopPlayback("Przygotowanie eksportu...");
+    status("exportStatus","Przygotowanie obrazu i dźwięku...");
+    const canvas=document.createElement("canvas");
+    canvas.width=MP4_EXPORT.width;
+    canvas.height=MP4_EXPORT.height;
+    const ctx=canvas.getContext("2d",{alpha:false});
+    if(!ctx) throw new Error("Nie można utworzyć płótna eksportu.");
+    canvasStream=canvas.captureStream(MP4_EXPORT.fps);
+
+    const tracks=[...canvasStream.getVideoTracks()];
+    audioContext=new (window.AudioContext||window.webkitAudioContext)();
+    await audioContext.resume();
+    audioDestination=audioContext.createMediaStreamDestination();
+
+    clipGain=audioContext.createGain();
+    clipGain.gain.value=1;
+    clipGain.connect(audioDestination);
+
+    if(audioUrl) {
+      music=document.createElement("audio");
+      music.src=audioUrl;
+      music.preload="auto";
+      musicSource=audioContext.createMediaElementSource(music);
+      musicGain=audioContext.createGain();
+      musicGain.gain.value=Number($("volumeInput").value)/100;
+      musicSource.connect(musicGain);
+      musicGain.connect(audioDestination);
+    }
+
+    const audioTracks=audioDestination.stream.getAudioTracks();
+    tracks.push(...audioTracks);
+    const combined=new MediaStream(tracks);
+    const mimeType=["video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"]
+      .find(type=>MediaRecorder.isTypeSupported(type));
+    if(!mimeType) throw new Error("Brak obsługi formatu pośredniego WebM.");
+    const chunks=[];
+    recorder=new MediaRecorder(combined,{mimeType,videoBitsPerSecond:5000000,audioBitsPerSecond:160000});
+    recorder.ondataavailable=event=>{if(event.data&&event.data.size) chunks.push(event.data);};
+    const stopped=new Promise((resolve,reject)=>{
+      recorder.onstop=resolve;
+      recorder.onerror=event=>reject(event.error||new Error("Błąd nagrywania obrazu."));
+    });
+    recorder.start(1000);
+    if(music) {
+      music.currentTime=0;
+      music.play().catch(()=>{});
+    }
+
+    let elapsed=0;
+    for(let i=0;i<clips.length;i++) {
+      const item=clips[i];
+      const duration=safeDuration(item.duration);
+      status("exportStatus","Renderowanie sceny "+(i+1)+" z "+clips.length+"...");
+      if(item.type==="image") {
+        const image=new Image();
+        image.src=item.url;
+        await new Promise((resolve,reject)=>{
+          image.onload=resolve;
+          image.onerror=()=>reject(new Error("Nie można odczytać zdjęcia: "+item.name));
+        });
+        const start=performance.now();
+        while(performance.now()-start<duration*1000) {
+          const local=(performance.now()-start)/1000;
+          drawExportFrame(ctx,image,canvas.width,canvas.height);
+          drawExportSubtitle(ctx,elapsed+local,canvas.width,canvas.height);
+          await exportDelay(1000/MP4_EXPORT.fps);
+        }
+      } else {
+        clipVideo=await loadExportVideo(item.url);
+        clipSource=audioContext.createMediaElementSource(clipVideo);
+        clipSource.connect(clipGain);
+        await clipVideo.play();
+        const start=performance.now();
+        while(performance.now()-start<duration*1000) {
+          const local=(performance.now()-start)/1000;
+          drawExportFrame(ctx,clipVideo,canvas.width,canvas.height);
+          drawExportSubtitle(ctx,elapsed+local,canvas.width,canvas.height);
+          if(clipVideo.ended) break;
+          await exportDelay(1000/MP4_EXPORT.fps);
+        }
+        clipVideo.pause();
+        clipVideo.removeAttribute("src");
+        clipVideo.load();
+        clipVideo=null;
+        clipSource=null;
+      }
+      elapsed+=duration;
+    }
+    recorder.stop();
+    await stopped;
+    if(music) music.pause();
+    status("exportStatus","Konwersja nagrania do MP4...");
+    const webmBlob=new Blob(chunks,{type:mimeType});
+    if(!webmBlob.size) throw new Error("Nie powstał plik pośredni. Spróbuj ponownie.");
+    const ffmpeg=await getFFmpeg();
+    const inputName="dark-editor-source.webm";
+    const outputName="dark-editor-export.mp4";
+    await ffmpeg.writeFile(inputName,new Uint8Array(await webmBlob.arrayBuffer()));
+    const result=await ffmpeg.exec([
+      "-i",inputName,"-map","0:v:0","-map","0:a?","-c:v","libx264",
+      "-preset","ultrafast","-crf","23","-pix_fmt","yuv420p",
+      "-c:a","aac","-b:a","160k","-movflags","+faststart",outputName
+    ]);
+    if(result!==0) throw new Error("Konwersja MP4 nie powiodła się (kod "+result+").");
+    const output=await ffmpeg.readFile(outputName);
+    const mp4Blob=new Blob([output],{type:"video/mp4"});
+    if(mp4Blob.size<1024) throw new Error("Plik MP4 jest pusty lub niekompletny.");
+    downloadUrl=URL.createObjectURL(mp4Blob);
+    const link=document.createElement("a");
+    link.href=downloadUrl;
+    link.download=($("projectName").value.trim()||"dark-editor-film").replace(/[^\p{L}\p{N}_-]+/gu,"-")+".mp4";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    status("exportStatus","Gotowe! Plik MP4 został przygotowany do pobrania.");
+    $("exportProgress").textContent="MP4 • "+(mp4Blob.size/1024/1024).toFixed(1)+" MB • 1280×720 • H.264 + AAC";
+  } catch(error) {
+    status("exportStatus","Eksport nie powiódł się: "+(error&&error.message?error.message:String(error)));
+  } finally {
+    if(recorder&&recorder.state!=="inactive") {
+      try{recorder.stop();}catch(_){}
+    }
+    if(clipVideo) {
+      clipVideo.pause();
+      clipVideo.removeAttribute("src");
+      clipVideo.load();
+    }
+    if(music) {
+      music.pause();
+      music.removeAttribute("src");
+      music.load();
+    }
+    if(clipSource) {try{clipSource.disconnect();}catch(_){}}
+    if(musicSource) {try{musicSource.disconnect();}catch(_){}}
+    if(audioContext) {try{await audioContext.close();}catch(_){}}
+    if(canvasStream) canvasStream.getTracks().forEach(track=>track.stop());
+    if(downloadUrl) setTimeout(()=>URL.revokeObjectURL(downloadUrl),60000);
+    button.disabled=false;
+  }
+}
+
+$("exportMp4").onclick=exportMp4;
 
 $("playAll").onclick=playSequence;
 $("stopAll").onclick=()=>stopPlayback();

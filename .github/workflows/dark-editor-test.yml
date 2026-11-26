@@ -1,7 +1,7 @@
 name: DARK EDITOR test
 on:
   push:
-    branches: [fix/dark-editor-test-media-replacement]
+    branches: [fix/dark-editor-test-media-replacement, feat/dark-editor-mp4-export]
     paths:
       - "dark-editor-test/**"
       - "tests/**"
@@ -33,4 +33,4 @@ jobs:
             sleep 1
           done
       - name: Run browser tests
-        run: npx playwright test tests/dark-editor-test.spec.js --reporter=list
+        run: npx playwright test tests/*.spec.js --reporter=list

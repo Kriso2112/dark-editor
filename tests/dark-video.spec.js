@@ -69,3 +69,29 @@ test("updates the word count correctly for ordinary text", async ({ page }) => {
   await page.locator("#script").fill("jeden dwa trzy");
   await expect(page.locator("#wordCount")).toHaveText("3 słów");
 });
+
+test("checks a configured DARK AI API in mock mode", async ({ page }) => {
+  await page.route("https://api.example.test/api/health", route => route.fulfill({ json: { ok: true, mode: "mock", paidProviderEnabled: false } }));
+  await page.locator("#apiUrl").fill("https://api.example.test");
+  await page.getByRole("button", { name: "SPRAWDŹ POŁĄCZENIE" }).click();
+  await expect(page.locator("#notice")).toContainText("tryb testowy bez opłat");
+});
+
+test("uses the DARK AI mock API and refuses paid provider mode", async ({ page }) => {
+  await page.route("https://api.example.test/api/health", route => route.fulfill({ json: { ok: true, mode: "mock" } }));
+  await page.route("https://api.example.test/api/generate", route => route.fulfill({ json: { mode: "mock", project: { version: 1, title: "Test API", duration: 60, format: "16:9", mode: "auto", script: "Scenariusz z API.", scenes: [{ id: "api-1", title: "Otwarcie", narration: "Tekst sceny", visual: "Kadr testowy", seconds: 60, approved: false }] } } }));
+  await page.locator("#apiUrl").fill("https://api.example.test");
+  await page.locator("#topic").fill("Test API");
+  await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
+  await expect(page.locator("#projectTitle")).toHaveText("Test API");
+  await expect(page.locator("#notice")).toContainText("bezpłatnym trybie testowym");
+});
+
+test("blocks a paid DARK AI provider until the app has a consent flow", async ({ page }) => {
+  await page.route("https://api.example.test/api/health", route => route.fulfill({ json: { ok: true, mode: "provider-ready" } }));
+  await page.locator("#apiUrl").fill("https://api.example.test");
+  await page.locator("#topic").fill("Test płatnego AI");
+  await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
+  await expect(page.locator("#notice")).toContainText("blokuje go do czasu wdrożenia ekranu zgody");
+  await expect(page.locator("#workspace")).toBeHidden();
+});

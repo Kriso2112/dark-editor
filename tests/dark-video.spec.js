@@ -2,7 +2,7 @@ const { test, expect } = require("@playwright/test");
 const path = require("path");
 const { pathToFileURL } = require("url");
 
-const appUrl = pathToFileURL(path.resolve(__dirname, "../index.html")).href;
+const appUrl = pathToFileURL(path.resolve(__dirname, "../dark-video/index.html")).href;
 
 test.beforeEach(async ({ page }) => {
   await page.goto(appUrl);
@@ -43,4 +43,22 @@ test("supports a narrow mobile viewport without hiding the main action", async (
     clientWidth: document.documentElement.clientWidth
   }));
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+});
+
+test("exports a readable script file", async ({ page }) => {
+  await page.locator("#topic").fill("Tajemnice piramid");
+  await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "SCENARIUSZ TXT ↓" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("dark-video-scenariusz.txt");
+});
+
+test("exports a storyboard CSV file", async ({ page }) => {
+  await page.locator("#topic").fill("Historia starożytnego miasta");
+  await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "STORYBOARD CSV ↓" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("dark-video-storyboard.csv");
 });

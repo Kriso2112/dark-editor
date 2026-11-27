@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DARK EDITOR 0.9.0</title>
+<title>DARK EDITOR 1.0.0</title>
 <style>
 :root{--gold:#d6ad55;--bg:#090909;--panel:#171717;--line:#393021}
 *{box-sizing:border-box}
@@ -42,7 +42,7 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 
 <header>
 <h1>DARK EDITOR</h1>
-<p>BLACK & GOLD CINEMA STUDIO • VERSION 0.9.0</p>
+<p>BLACK & GOLD CINEMA STUDIO • VERSION 1.0.0</p>
 </header>
 
 <section>
@@ -67,6 +67,17 @@ footer{text-align:center;color:#777;font-size:11px;padding:20px}
 <button id="stopAll">■ ZATRZYMAJ</button>
 </div>
 <div class="status" id="playStatus">Gotowy do pracy.</div>
+</section>
+
+<section id="exportSection">
+<h2>3. EKSPORT GOTOWEGO FILMU</h2>
+<p class="small">Eksport przygotowuje MP4 z kolejności scen, czasów, muzyki i napisów. Najpierw przetestuj krótki materiał. Dłuższy eksport może wymagać dużo pamięci i czasu.</p>
+<div class="row">
+<button id="exportMp4">⬇ EKSPORTUJ MP4</button>
+</div>
+<div id="exportStatus" class="status" role="status" aria-live="polite">Gotowy do eksportu.</div>
+<div id="exportProgress" class="small"></div>
+<p class="small warning">Wymaga połączenia z internetem przy pierwszym uruchomieniu, aby pobrać silnik FFmpeg WebAssembly. Nie zamykaj karty podczas eksportu.</p>
 </section>
 
 <section>
@@ -162,11 +173,11 @@ Oddziel kolejne części pustą linią."></textarea>
 <button id="loadProject">WCZYTAJ ZAPIS</button>
 </div>
 <div id="saveStatus" class="status">Projekt nie został zapisany.</div>
-<p class="small">Projekt zapisuje ustawienia, kolejność scen, napisy i głośność. Filmy i muzykę trzeba ponownie wybrać z galerii po ponownym otwarciu strony.</p>
-<p class="small warning">Po wczytaniu zapisu wybierz ponownie pliki z galerii. Edytor dopasuje je do zapisanych scen po nazwach.</p>
+<p class="small">Wersja 1.0 zapisuje projekt oraz kopie zdjęć, filmów i audio w pamięci IndexedDB tej przeglądarki. Po ponownym otwarciu materiały powinny zostać automatycznie przywrócone na tym samym urządzeniu i w tej samej przeglądarce.</p>
+<p class="small warning">Nie czyść danych witryny ani pamięci przeglądarki, jeśli chcesz zachować lokalne materiały. Zalecamy okresowe tworzenie kopii projektu.</p>
 </section>
 
-<footer>DARK EDITOR 0.9.0 • BLACK & GOLD</footer>
+<footer>DARK EDITOR 1.0.0 • BLACK & GOLD</footer>
 
 <script>
 (() => {
@@ -177,8 +188,133 @@ const video = $("video");
 const photo = $("photo");
 const audio = $("audio");
 
-const STORAGE_KEY = "darkEditor090";
-const OLD_KEYS = ["darkEditor080","darkEditor072","darkEditor071","darkEditor07","darkEditor06"];
+const STORAGE_KEY = "darkEditor100";
+const LEGACY_KEYS = ["darkEditor090","darkEditor080","darkEditor072","darkEditor071","darkEditor07","darkEditor06"];
+const DB_NAME = "darkEditorMediaDB";
+const DB_VERSION = 1;
+const DB_STORE = "media";
+const PROJECT_ID = "dark-editor-main";
+let saveTimer = null;
+let saveQueue = Promise.resolve();
+const projectAudioId = "audio-main";
+
+function makeId() {
+  return (window.crypto && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : "media-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+}
+
+function openMediaDB() {
+  return new Promise((resolve,reject)=>{
+    if (!("indexedDB" in window)) {
+      reject(new Error("Ta przeglądarka nie obsługuje IndexedDB."));
+      return;
+    }
+    const request=indexedDB.open(DB_NAME,DB_VERSION);
+    request.onupgradeneeded=()=>{
+      const db=request.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE,{keyPath:"key"});
+    };
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error||new Error("Nie można otworzyć pamięci projektu."));
+  });
+}
+
+function mediaTransaction(mode,work) {
+  return openMediaDB().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(DB_STORE,mode);
+    const store=tx.objectStore(DB_STORE);
+    try { work(store); } catch(error) { db.close(); reject(error); return; }
+    tx.oncomplete=()=>{ db.close(); resolve(); };
+    tx.onerror=()=>{ const error=tx.error; db.close(); reject(error||new Error("Błąd zapisu mediów.")); };
+    tx.onabort=()=>{ const error=tx.error; db.close(); reject(error||new Error("Zapis mediów został przerwany.")); };
+  }));
+}
+
+function readStoredMedia(key) {
+  return openMediaDB().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(DB_STORE,"readonly");
+    const request=tx.objectStore(DB_STORE).get(key);
+    request.onsuccess=()=>resolve(request.result ? request.result.blob : null);
+    request.onerror=()=>reject(request.error||new Error("Nie można odczytać materiału."));
+    tx.oncomplete=()=>db.close();
+    tx.onerror=()=>{db.close();reject(tx.error);};
+  }));
+}
+
+function blobFromUrl(url) {
+  if (!url) return Promise.resolve(null);
+  return fetch(url).then(response=>{
+    if (!response.ok) throw new Error("Nie można odczytać pliku projektu.");
+    return response.blob();
+  });
+}
+
+function saveProjectSnapshot() {
+  const data=projectData();
+  const media=clips.map(clip=>clip.url
+    ? blobFromUrl(clip.url).then(blob=>({key:clip.id,blob,name:clip.name,type:clip.type}))
+    : Promise.resolve(null));
+  const audioPromise=audioUrl
+    ? blobFromUrl(audioUrl).then(blob=>({key:projectAudioId,blob,name:audioName,type:"audio"}))
+    : Promise.resolve(null);
+
+  return Promise.all([...media,audioPromise]).then(records=>{
+    const valid=records.filter(Boolean);
+    const keepKeys=new Set(clips.map(clip=>clip.id));
+    if (audioName) keepKeys.add(projectAudioId);
+
+    return mediaTransaction("readwrite",store=>{
+      // Update available blobs without deleting media that could not be reattached yet.
+      valid.forEach(record=>store.put({...record,projectId:PROJECT_ID}));
+
+      // Remove only records that no longer belong to the current project.
+      const cursorRequest=store.openCursor();
+      cursorRequest.onsuccess=()=>{
+        const cursor=cursorRequest.result;
+        if (!cursor) return;
+        const record=cursor.value;
+        if (record.projectId===PROJECT_ID && !keepKeys.has(record.key)) {
+          cursor.delete();
+        }
+        cursor.continue();
+      };
+    }).then(()=>{
+      data.mediaStorage="indexeddb";
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(data));
+    });
+  });
+}
+
+function queueSave() {
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{
+    saveQueue=saveQueue.then(()=>saveProjectSnapshot()).then(()=>{
+      status("saveStatus","Projekt i dostępne materiały zapisane automatycznie.");
+    }).catch(error=>{
+      status("saveStatus","Nie udało się zapisać wszystkich materiałów: "+error.message);
+    });
+  },350);
+}
+
+async function restoreMediaForProject() {
+  await Promise.all(clips.map(async clip=>{
+    try {
+      const blob=await readStoredMedia(clip.id);
+      if (blob) clip.url=URL.createObjectURL(blob);
+    } catch (_) {}
+  }));
+  try {
+    const audioBlob=await readStoredMedia("audio-main");
+    if(audioBlob) {
+      if(audioUrl) URL.revokeObjectURL(audioUrl);
+      audioUrl=URL.createObjectURL(audioBlob);
+      audio.src=audioUrl;
+      audio.load();
+      status("audioStatus","Muzyka przywrócona z pamięci projektu.");
+    }
+  } catch (_) {}
+}
 
 let clips = [];
 let subtitles = [];
@@ -287,6 +423,7 @@ function selectClip(index) {
   renderClips();
   currentElapsed=clipOffset(index);
   updateCaption(currentElapsed);
+  saveSilently();
 }
 
 function renderClips() {
@@ -435,10 +572,13 @@ $("scriptInput").addEventListener("input",()=>{
 
 function projectData() {
   return {
-    version:"0.9.0",
+    version:"1.0.0",
+    projectId:PROJECT_ID,
+    selectedClipId:selected>=0 && clips[selected] ? clips[selected].id : null,
     name:$("projectName").value,
     mode,
     clips:clips.map(c=>({
+      id:c.id,
       name:c.name,
       type:c.type,
       duration:c.duration
@@ -451,11 +591,7 @@ function projectData() {
   };
 }
 
-function saveSilently() {
-  try {
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(projectData()));
-  } catch (_) {}
-}
+function saveSilently() { queueSave(); }
 
 function addMediaFiles(fileList) {
   const files=Array.from(fileList||[]);
@@ -487,8 +623,9 @@ function addMediaFiles(fileList) {
       if (existing.url) URL.revokeObjectURL(existing.url);
       existing.url=url;
       existing.name=file.name;
+      existing.id=existing.id||makeId();
     } else {
-      clips.push({name:file.name,type,url,duration:5});
+      clips.push({id:makeId(),name:file.name,type,url,duration:5});
     }
     added++;
   });
@@ -793,6 +930,273 @@ async function playSequence() {
   }
 }
 
+const MP4_EXPORT = {
+  width: 1280,
+  height: 720,
+  fps: 30,
+  maxSeconds: 600,
+  ffmpeg: null
+};
+
+const exportDelay = ms => new Promise(resolve=>setTimeout(resolve,ms));
+
+function drawExportFrame(ctx,source,width,height) {
+  ctx.fillStyle="#000";
+  ctx.fillRect(0,0,width,height);
+  if (!source || !source.videoWidth && !source.naturalWidth) return;
+  const sw=source.videoWidth||source.naturalWidth;
+  const sh=source.videoHeight||source.naturalHeight;
+  if (!sw||!sh) return;
+  const scale=Math.min(width/sw,height/sh);
+  const dw=sw*scale, dh=sh*scale;
+  ctx.drawImage(source,(width-dw)/2,(height-dh)/2,dw,dh);
+}
+
+function drawExportSubtitle(ctx,time,width,height) {
+  const active=subtitles.find(item=>time>=Number(item.start)&&time<Number(item.end));
+  if(!active) return;
+  const text=String(active.text||"");
+  const fontSize=36;
+  const maxWidth=width*.88;
+  ctx.save();
+  ctx.font="bold "+fontSize+"px Arial";
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  const words=text.split(/\s+/);
+  const lines=[];
+  let line="";
+  for(const word of words) {
+    const next=line?line+" "+word:word;
+    if(ctx.measureText(next).width>maxWidth&&line) {
+      lines.push(line);
+      line=word;
+    } else line=next;
+  }
+  if(line) lines.push(line);
+  const lineHeight=fontSize*1.25;
+  const blockHeight=lines.length*lineHeight;
+  const y=active.position==="top"?height*.12:
+    active.position==="middle"?height*.5:height*.86;
+  ctx.fillStyle="rgba(0,0,0,.58)";
+  ctx.fillRect(width*.04,y-blockHeight/2-12,width*.92,blockHeight+24);
+  ctx.fillStyle="#fff";
+  ctx.shadowColor="#000";
+  ctx.shadowBlur=4;
+  lines.forEach((value,index)=>ctx.fillText(value,width/2,y-blockHeight/2+lineHeight*(index+.5)));
+  ctx.restore();
+}
+
+async function loadExportVideo(url) {
+  const element=document.createElement("video");
+  element.playsInline=true;
+  element.preload="auto";
+  element.src=url;
+  await new Promise((resolve,reject)=>{
+    const done=()=>{cleanup();resolve();};
+    const fail=()=>{cleanup();reject(new Error("Nie można wczytać jednego z filmów."));};
+    const cleanup=()=>{
+      element.removeEventListener("loadeddata",done);
+      element.removeEventListener("error",fail);
+    };
+    element.addEventListener("loadeddata",done,{once:true});
+    element.addEventListener("error",fail,{once:true});
+    element.load();
+  });
+  return element;
+}
+
+async function getFFmpeg() {
+  if(MP4_EXPORT.ffmpeg) return MP4_EXPORT.ffmpeg;
+  status("exportStatus","Pobieranie silnika MP4 (FFmpeg WebAssembly)...");
+  const {FFmpeg}=await import("https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js");
+  const {toBlobURL}=await import("https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js");
+  const base="https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm";
+  const ffmpeg=new FFmpeg();
+  ffmpeg.on("log",({message})=>{
+    if(message) $("exportProgress").textContent=message.slice(-180);
+  });
+  // FFmpeg's default worker is imported from the CDN, which browsers block
+  // as a cross-origin Worker. Serve the worker and its ES-module dependencies
+  // from this project (same origin) instead.
+  const workerURL=new URL("./ffmpeg/worker.js",document.baseURI).href;
+  await ffmpeg.load({
+    classWorkerURL:workerURL,
+    coreURL:await toBlobURL(base+"/ffmpeg-core.js","text/javascript"),
+    wasmURL:await toBlobURL(base+"/ffmpeg-core.wasm","application/wasm")
+  });
+  MP4_EXPORT.ffmpeg=ffmpeg;
+  return ffmpeg;
+}
+
+async function exportMp4() {
+  const button=$("exportMp4");
+  if(!clips.length) {
+    status("exportStatus","Najpierw dodaj materiały na oś czasu.");
+    return;
+  }
+  if(clips.some(item=>!item.url)) {
+    status("exportStatus","Niektóre sceny nie mają plików. Uzupełnij je przed eksportem.");
+    return;
+  }
+  const total=clips.reduce((sum,item)=>sum+safeDuration(item.duration),0);
+  if(total>MP4_EXPORT.maxSeconds) {
+    status("exportStatus","Projekt przekracza limit eksportu 10 minut. Podziel go na krótsze części.");
+    return;
+  }
+  if(!window.MediaRecorder||!HTMLCanvasElement.prototype.captureStream) {
+    status("exportStatus","Ta przeglądarka nie obsługuje nagrywania obrazu do eksportu.");
+    return;
+  }
+  button.disabled=true;
+  $("exportProgress").textContent="";
+  let canvasStream=null, recorder=null, audioContext=null, clipVideo=null, music=null;
+  let clipSource=null, musicSource=null, clipGain=null, musicGain=null, audioDestination=null;
+  let downloadUrl=null;
+  try {
+    stopPlayback("Przygotowanie eksportu...");
+    status("exportStatus","Przygotowanie obrazu i dźwięku...");
+    const canvas=document.createElement("canvas");
+    canvas.width=MP4_EXPORT.width;
+    canvas.height=MP4_EXPORT.height;
+    const ctx=canvas.getContext("2d",{alpha:false});
+    if(!ctx) throw new Error("Nie można utworzyć płótna eksportu.");
+    canvasStream=canvas.captureStream(MP4_EXPORT.fps);
+
+    const tracks=[...canvasStream.getVideoTracks()];
+    audioContext=new (window.AudioContext||window.webkitAudioContext)();
+    await audioContext.resume();
+    audioDestination=audioContext.createMediaStreamDestination();
+
+    clipGain=audioContext.createGain();
+    clipGain.gain.value=1;
+    clipGain.connect(audioDestination);
+
+    if(audioUrl) {
+      music=document.createElement("audio");
+      music.src=audioUrl;
+      music.preload="auto";
+      musicSource=audioContext.createMediaElementSource(music);
+      musicGain=audioContext.createGain();
+      musicGain.gain.value=Number($("volumeInput").value)/100;
+      musicSource.connect(musicGain);
+      musicGain.connect(audioDestination);
+    }
+
+    const audioTracks=audioDestination.stream.getAudioTracks();
+    tracks.push(...audioTracks);
+    const combined=new MediaStream(tracks);
+    const mimeType=["video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"]
+      .find(type=>MediaRecorder.isTypeSupported(type));
+    if(!mimeType) throw new Error("Brak obsługi formatu pośredniego WebM.");
+    const chunks=[];
+    recorder=new MediaRecorder(combined,{mimeType,videoBitsPerSecond:5000000,audioBitsPerSecond:160000});
+    recorder.ondataavailable=event=>{if(event.data&&event.data.size) chunks.push(event.data);};
+    const stopped=new Promise((resolve,reject)=>{
+      recorder.onstop=resolve;
+      recorder.onerror=event=>reject(event.error||new Error("Błąd nagrywania obrazu."));
+    });
+    recorder.start(1000);
+    if(music) {
+      music.currentTime=0;
+      music.play().catch(()=>{});
+    }
+
+    let elapsed=0;
+    for(let i=0;i<clips.length;i++) {
+      const item=clips[i];
+      const duration=safeDuration(item.duration);
+      status("exportStatus","Renderowanie sceny "+(i+1)+" z "+clips.length+"...");
+      if(item.type==="image") {
+        const image=new Image();
+        image.src=item.url;
+        await new Promise((resolve,reject)=>{
+          image.onload=resolve;
+          image.onerror=()=>reject(new Error("Nie można odczytać zdjęcia: "+item.name));
+        });
+        const start=performance.now();
+        while(performance.now()-start<duration*1000) {
+          const local=(performance.now()-start)/1000;
+          drawExportFrame(ctx,image,canvas.width,canvas.height);
+          drawExportSubtitle(ctx,elapsed+local,canvas.width,canvas.height);
+          await exportDelay(1000/MP4_EXPORT.fps);
+        }
+      } else {
+        clipVideo=await loadExportVideo(item.url);
+        clipSource=audioContext.createMediaElementSource(clipVideo);
+        clipSource.connect(clipGain);
+        await clipVideo.play();
+        const start=performance.now();
+        while(performance.now()-start<duration*1000) {
+          const local=(performance.now()-start)/1000;
+          drawExportFrame(ctx,clipVideo,canvas.width,canvas.height);
+          drawExportSubtitle(ctx,elapsed+local,canvas.width,canvas.height);
+          if(clipVideo.ended) break;
+          await exportDelay(1000/MP4_EXPORT.fps);
+        }
+        clipVideo.pause();
+        clipVideo.removeAttribute("src");
+        clipVideo.load();
+        clipVideo=null;
+        clipSource=null;
+      }
+      elapsed+=duration;
+    }
+    recorder.stop();
+    await stopped;
+    if(music) music.pause();
+    status("exportStatus","Konwersja nagrania do MP4...");
+    const webmBlob=new Blob(chunks,{type:mimeType});
+    if(!webmBlob.size) throw new Error("Nie powstał plik pośredni. Spróbuj ponownie.");
+    const ffmpeg=await getFFmpeg();
+    const inputName="dark-editor-source.webm";
+    const outputName="dark-editor-export.mp4";
+    await ffmpeg.writeFile(inputName,new Uint8Array(await webmBlob.arrayBuffer()));
+    const result=await ffmpeg.exec([
+      "-i",inputName,"-map","0:v:0","-map","0:a?","-c:v","libx264",
+      "-preset","ultrafast","-crf","23","-pix_fmt","yuv420p",
+      "-c:a","aac","-b:a","160k","-movflags","+faststart",outputName
+    ]);
+    if(result!==0) throw new Error("Konwersja MP4 nie powiodła się (kod "+result+").");
+    const output=await ffmpeg.readFile(outputName);
+    const mp4Blob=new Blob([output],{type:"video/mp4"});
+    if(mp4Blob.size<1024) throw new Error("Plik MP4 jest pusty lub niekompletny.");
+    downloadUrl=URL.createObjectURL(mp4Blob);
+    const link=document.createElement("a");
+    link.href=downloadUrl;
+    link.download=($("projectName").value.trim()||"dark-editor-film").replace(/[^\p{L}\p{N}_-]+/gu,"-")+".mp4";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    status("exportStatus","Gotowe! Plik MP4 został przygotowany do pobrania.");
+    $("exportProgress").textContent="MP4 • "+(mp4Blob.size/1024/1024).toFixed(1)+" MB • 1280×720 • H.264 + AAC";
+  } catch(error) {
+    status("exportStatus","Eksport nie powiódł się: "+(error&&error.message?error.message:String(error)));
+  } finally {
+    if(recorder&&recorder.state!=="inactive") {
+      try{recorder.stop();}catch(_){}
+    }
+    if(clipVideo) {
+      clipVideo.pause();
+      clipVideo.removeAttribute("src");
+      clipVideo.load();
+    }
+    if(music) {
+      music.pause();
+      music.removeAttribute("src");
+      music.load();
+    }
+    if(clipSource) {try{clipSource.disconnect();}catch(_){}}
+    if(musicSource) {try{musicSource.disconnect();}catch(_){}}
+    if(audioContext) {try{await audioContext.close();}catch(_){}}
+    if(canvasStream) canvasStream.getTracks().forEach(track=>track.stop());
+    if(downloadUrl) setTimeout(()=>URL.revokeObjectURL(downloadUrl),60000);
+    button.disabled=false;
+  }
+}
+
+$("exportMp4").onclick=exportMp4;
+
+
 $("playAll").onclick=playSequence;
 $("stopAll").onclick=()=>stopPlayback();
 
@@ -808,20 +1212,23 @@ $("manualMode").onclick=()=>{
   saveSilently();
 };
 
-$("saveProject").onclick=()=>{
+$("saveProject").onclick=async()=>{
   try {
-    localStorage.setItem(STORAGE_KEY,JSON.stringify(projectData()));
-    status("saveStatus","Projekt 0.9.0 zapisany w pamięci przeglądarki.");
-  } catch (_) {
-    status("saveStatus","Nie udało się zapisać projektu.");
+    clearTimeout(saveTimer);
+    await saveQueue;
+    await saveProjectSnapshot();
+    status("saveStatus","Projekt 1.0.0 oraz dostępne pliki zapisane.");
+  } catch (error) {
+    status("saveStatus","Błąd zapisu projektu: "+error.message);
   }
 };
 
-function restoreProject(data) {
+async function restoreProject(data) {
   if (!data||!Array.isArray(data.clips)) {
     throw new Error("Nieprawidłowy zapis projektu.");
   }
 
+  const selectedClipId=data.selectedClipId ? String(data.selectedClipId) : null;
   stopPlayback("Wczytywanie projektu...");
 
   clips.forEach(c=>{
@@ -829,6 +1236,7 @@ function restoreProject(data) {
   });
 
   clips=data.clips.map(c=>({
+    id:String(c.id||makeId()),
     name:String(c.name||"Nieznany plik"),
     type:c.type==="image"?"image":"video",
     duration:safeDuration(c.duration),
@@ -882,17 +1290,31 @@ function restoreProject(data) {
 
   renderClips();
   renderSubtitles();
+  await restoreMediaForProject();
+  renderClips();
 
-  status("saveStatus",
-    "Wczytano projekt. Teraz ponownie wybierz pliki z galerii.");
+  const restoredSelection=selectedClipId
+    ? clips.findIndex(clip=>clip.id===selectedClipId)
+    : -1;
+  if (restoredSelection>=0) {
+    selectClip(restoredSelection);
+  } else {
+    selected=-1;
+    showEmpty();
+    status("selectedInfo","Nie wybrano sceny.");
+  }
+
+  status("saveStatus",clips.some(c=>!c.url)
+    ? "Projekt wczytany. Niektóre pliki wymagają ponownego wskazania."
+    : "Projekt i zapisane materiały zostały przywrócone.");
 }
 
-$("loadProject").onclick=()=>{
+$("loadProject").onclick=async()=>{
   try {
     let saved=localStorage.getItem(STORAGE_KEY);
 
     if (!saved) {
-      for (const key of OLD_KEYS) {
+      for (const key of LEGACY_KEYS) {
         saved=localStorage.getItem(key);
         if (saved) break;
       }
@@ -902,7 +1324,7 @@ $("loadProject").onclick=()=>{
       return alert("Nie znaleziono zapisanego projektu.");
     }
 
-    restoreProject(JSON.parse(saved));
+    await restoreProject(JSON.parse(saved));
   } catch (e) {
     alert("Nie udało się wczytać projektu: "+e.message);
   }
@@ -910,24 +1332,30 @@ $("loadProject").onclick=()=>{
 
 $("projectName").addEventListener("change",saveSilently);
 
+(async()=>{
 try {
   let saved=localStorage.getItem(STORAGE_KEY);
+  let legacy=false;
 
   if (!saved) {
-    for (const key of OLD_KEYS) {
+    for (const key of LEGACY_KEYS) {
       saved=localStorage.getItem(key);
-      if (saved) break;
+      if (saved) { legacy=true; break; }
     }
   }
 
   if (saved) {
     const data=JSON.parse(saved);
-    restoreProject(data);
+    await restoreProject(data);
+    if (legacy) {
+      status("saveStatus","Odnaleziono starszy projekt. Zachowano scenariusz i ustawienia; brakujące media można podłączyć ponownie.");
+      queueSave();
+    }
   }
 } catch (_) {
   status("saveStatus","Nie udało się odczytać poprzedniego zapisu.");
 }
-
+})();
 })();
 </script>
 </body>

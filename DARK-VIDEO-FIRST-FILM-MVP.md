@@ -17,7 +17,8 @@ The first usable release must take one brief and produce one playable, downloada
 - New isolated Docker render service (render-service/) with health endpoint and MP4 endpoint.
 - FFmpeg H.264/AAC rendering in 16:9, 9:16 and 1:1.
 - Local Polish synthetic narration using eSpeak NG.
-- Original black-and-gold scene-card visuals with burned-in text.
+- Original black-and-gold scene-card visuals with burned-in text and subtle slow zoom.
+- Synchronized Polish subtitle track embedded in MP4 and a low-volume original ambient sound bed.
 - Temporary job directories with automatic cleanup and request/scene limits.
 - Render-service tests for health, validation and real MP4 output.
 

@@ -1,12 +1,13 @@
-# DARK WORK API deployment bootstrap
+# DARK WORK BRIDGE deployment bootstrap
 
-This directory contains the source and Wrangler configuration for the existing
-Cloudflare Worker `dark-work-api`.
+This directory contains the source and Wrangler configuration for a **new**
+Cloudflare Worker named `dark-work-bridge`. It is deliberately separate from
+the existing `dark-work-api` Worker, which this deployment must not modify.
 
 ## What this does
 
 - Provides a read-only `GET /` and `GET /health` health check.
-- Allows GitHub Actions to deploy this Worker after changes are merged to
+- Allows GitHub Actions to deploy this new Worker after changes are merged to
   `main`.
 - Keeps Cloudflare credentials in GitHub Actions repository secrets.
 
@@ -26,11 +27,13 @@ unauthenticated command endpoint.
 In GitHub, open **Settings → Secrets and variables → Actions → New repository
 secret** and add:
 
-- `CLOUDFLARE_API_TOKEN`: a newly created Cloudflare token scoped to edit the
-  existing `dark-work-api` Worker only, where supported.
+- `CLOUDFLARE_API_TOKEN`: a Cloudflare API token with the Workers Scripts
+  write permission for the account containing this new Worker.
 - `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account ID.
 
 Never put either value in source files, commits, chat messages, or workflow logs.
+The token is an account-level permission and may be able to modify other Workers
+in that account; keep it private and revoke it if exposed.
 
 The deploy workflow runs only when files in this directory or its workflow
 change on `main`, or when manually started from the Actions tab.

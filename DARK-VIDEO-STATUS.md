@@ -29,6 +29,7 @@ Pull request: https://github.com/Kriso2112/dark-editor/pull/12 (draft, targets w
 - Rendering is currently a synchronous HTTP request; there is no durable job queue, progress, retry/cancel, user authentication or storage retention system.
 - The renderer has not been deployed; the user must not enter a public endpoint until deployment and HTTPS/authentication/CORS setup are reviewed.
 - No paid AI service, API key or secret was configured.
+- The renderer's automated end-to-end MP4 test is being expanded to inspect video, audio and subtitle streams; its final CI result is not yet confirmed.
 - The output has not yet been verified on a physical Android device.
 - No merge to main or production deployment has been performed.
 

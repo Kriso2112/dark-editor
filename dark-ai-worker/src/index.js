@@ -2,7 +2,7 @@ const JSON_HEADERS = { "Content-Type": "application/json; charset=utf-8", "Cache
 const CATEGORIES = new Set(["wiedza", "dokument", "historia", "reklama", "bajka"]);
 const DURATIONS = new Set([30, 60, 180, 300, 600]);
 const FORMATS = new Set(["16:9", "9:16", "1:1"]);
-const TONES = new Set(["mroczny", "dynamiczny", "spokojny", "cieply"]);
+const TONE_OPTIONS = new Set(["mroczny", "dynamiczny", "spokojny", "cieply"]);
 const TEMPLATES = {
   wiedza: [["Mocne otwarcie", "Postaw pytanie, które zaciekawi widza."], ["Kontekst", "Wyjaśnij tło i znaczenie tematu."], ["Najważniejsze tropy", "Przedstaw fakty i wyraźnie oznacz hipotezy."], ["Co wiemy naprawdę?", "Oddziel potwierdzone informacje od spekulacji."], ["Finał", "Podsumuj i zostaw widza z pytaniem."]],
   dokument: [["Wprowadzenie", "Przedstaw bohatera lub zjawisko."], ["Tło wydarzeń", "Wyjaśnij miejsce, czas i okoliczności."], ["Świadectwa i fakty", "Pokaż dowody i dostępne relacje."], ["Punkt zwrotny", "Zmień perspektywę opowieści."], ["Podsumowanie", "Zbierz wnioski i otwarte pytania."]],
@@ -25,7 +25,7 @@ function validate(input) {
   if (!CATEGORIES.has(input.category)) return "Nieobsługiwany rodzaj filmu.";
   if (!DURATIONS.has(Number(input.duration))) return "Nieobsługiwana długość filmu.";
   if (!FORMATS.has(input.format)) return "Nieobsługiwany format obrazu.";
-  if (!TONES.has(input.tone)) return "Nieobsługiwany klimat.";
+  if (!TONE_OPTIONS.has(input.tone)) return "Nieobsługiwany klimat.";
   if (!["auto", "manual"].includes(input.mode)) return "Nieobsługiwany tryb pracy.";
   return null;
 }

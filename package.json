@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "test:dark-ai": "node --test dark-ai-worker/test/worker.test.mjs",
+    "test:all": "npm test && npm run test:dark-ai"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1"

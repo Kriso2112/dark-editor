@@ -17,7 +17,7 @@ Open index.html in a modern browser for the editor/demo features. Service-worker
 - Install prompt button where the browser supports the install prompt event.
 
 ## Not included yet
-- DARK AI Worker API scaffold exists in `dark-ai-worker/`; mock API mode and a consent-gated OpenAI adapter are implemented but not deployed or connected to this PWA.
+- DARK AI Worker is implemented in `dark-ai-worker/` but not deployed. The PWA can call its mock API; paid provider mode remains deliberately blocked in the app.
 - No image/video generation, TTS, music generation, or MP4 rendering.
 - No server database, accounts, or cloud sync.
 - No integration with DARK EDITOR timeline yet.

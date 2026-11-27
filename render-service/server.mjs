@@ -45,6 +45,34 @@ function run(command, args, timeout = 120000) {
     child.on("close", code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(command + " zakończył się kodem " + code + ": " + stderr.slice(-2500))); });
   });
 }
+function capture(command, args, timeout = 30000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", chunk => stdout += chunk.toString());
+    child.stderr.on("data", chunk => stderr += chunk.toString());
+    const timer = setTimeout(() => child.kill("SIGKILL"), timeout);
+    child.on("error", error => { clearTimeout(timer); reject(error); });
+    child.on("close", code => { clearTimeout(timer); code === 0 ? resolve(stdout.trim()) : reject(new Error(command + " zakończył się kodem " + code + ": " + stderr.slice(-1200))); });
+  });
+}
+function srtTime(seconds) {
+  const ms = Math.max(0, Math.round(seconds * 1000));
+  const h = Math.floor(ms / 3600000), m = Math.floor(ms % 3600000 / 60000), s = Math.floor(ms % 60000 / 1000), milli = ms % 1000;
+  return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0") + "," + String(milli).padStart(3,"0");
+}
+function subtitleLines(text) {
+  const words = String(text || "").split(/\s+/).filter(Boolean), lines = [];
+  let line = "";
+  for (const word of words) {
+    if ((line + " " + word).trim().length > 42 && line) { lines.push(line); line = word; }
+    else line = (line + " " + word).trim();
+  }
+  if (line) lines.push(line);
+  const chunks = [];
+  for (let i=0;i<lines.length;i+=2) chunks.push(lines.slice(i,i+2).join("\\N"));
+  return chunks.join("\\N");
+}
 async function readJson(req) {
   const chunks = []; let size = 0;
   for await (const chunk of req) { size += chunk.length; if (size > MAX_BODY) throw Object.assign(new Error("Żądanie przekracza 2 MB."), { status: 413 }); chunks.push(chunk); }
@@ -60,18 +88,25 @@ async function render(input) {
   if (scenes.some(s => !s.narration.trim())) throw Object.assign(new Error("Każda scena musi mieć tekst narracji."), { status: 400 });
   const dir = await mkdtemp(path.join(os.tmpdir(), "dark-video-"));
   try {
-    const segments = [];
+    const segments = [], subtitleEntries = [];
+    let timeline = 0;
     for (let i=0; i<scenes.length; i++) {
       const scene = scenes[i], svg = path.join(dir, "scene-" + i + ".svg"), wav = path.join(dir, "voice-" + i + ".wav"), mp4 = path.join(dir, "part-" + i + ".mp4");
       await writeFile(svg, svgForScene(scene, i, scenes.length, width, height, input.topic), "utf8");
       await run("espeak-ng", ["-v", "pl", "-s", "148", "-w", wav, scene.narration], 30000);
+      const duration = Number(await capture("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", wav]));
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("Nie udało się odczytać długości narracji sceny " + (i+1) + ".");
+      subtitleEntries.push(String(i+1) + "\n" + srtTime(timeline) + " --> " + srtTime(timeline + duration) + "\n" + subtitleLines(scene.narration) + "\n");
+      timeline += duration;
       await run("ffmpeg", ["-y", "-loop", "1", "-framerate", "25", "-i", svg, "-i", wav, "-vf", "scale=" + width + ":" + height + ",format=yuv420p", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", mp4], 90000);
       segments.push(mp4);
     }
     const list = path.join(dir, "concat.txt");
     await writeFile(list, segments.map(file => "file '" + file.replace(/'/g, "'\\''") + "'").join("\n"));
-    const output = path.join(dir, "dark-video.mp4");
-    await run("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", "-movflags", "+faststart", output], 90000);
+    const joined = path.join(dir, "joined.mp4"), subtitles = path.join(dir, "captions.srt"), output = path.join(dir, "dark-video.mp4");
+    await writeFile(subtitles, "\uFEFF" + subtitleEntries.join("\n"), "utf8");
+    await run("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", joined], 90000);
+    await run("ffmpeg", ["-y", "-i", joined, "-i", subtitles, "-map", "0:v:0", "-map", "0:a:0", "-map", "1:0", "-c:v", "copy", "-c:a", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "language=pol", "-movflags", "+faststart", output], 90000);
     const bytes = await readFile(output);
     if (bytes.length < 2048 || bytes.subarray(4,8).toString() !== "ftyp") throw new Error("Weryfikacja pliku MP4 nie powiodła się.");
     return bytes;

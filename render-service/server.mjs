@@ -8,8 +8,8 @@ const PORT = Number(process.env.PORT || 8080);
 const MAX_BODY = 2 * 1024 * 1024;
 const FORMATS = { "16:9": [1280, 720], "9:16": [720, 1280], "1:1": [900, 900] };
 
-function send(res, status, data, type = "application/json; charset=utf-8") {
-  res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+function send(res, status, data, type = "application/json; charset=utf-8", extraHeaders = {}) {
+  res.writeHead(status, { "Content-Type": type, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", ...extraHeaders });
   res.end(type.startsWith("application/json") ? JSON.stringify(data) : data);
 }
 function escapeXml(value) {
@@ -79,12 +79,16 @@ async function render(input) {
 }
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
-  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, service: "DARK VIDEO Render Engine", ffmpeg: "required", tts: "espeak-ng Polish voice", formats: Object.keys(FORMATS), maxScenes: 12 });
+  const origin = req.headers.origin, allowedOrigin = process.env.ALLOWED_ORIGIN;
+  if (origin && (!allowedOrigin || origin !== allowedOrigin)) return send(res, 403, { error: "Origin nie jest dozwolony. Ustaw ALLOWED_ORIGIN dla adresu aplikacji." });
+  const cors = origin ? { "Access-Control-Allow-Origin": allowedOrigin, "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Vary": "Origin" } : {};
+  if (req.method === "OPTIONS") { res.writeHead(204, { ...cors, "Access-Control-Max-Age": "86400" }); return res.end(); }
+  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, service: "DARK VIDEO Render Engine", ffmpeg: "required", tts: "espeak-ng Polish voice", formats: Object.keys(FORMATS), maxScenes: 12 }, "application/json; charset=utf-8", cors);
   if (req.method === "POST" && url.pathname === "/api/render") {
     try {
       const input = await readJson(req), bytes = await render(input);
-      return send(res, 200, bytes, "video/mp4");
-    } catch (error) { return send(res, error.status || 500, { error: error.message || "Renderowanie nie powiodło się." }); }
+      return send(res, 200, bytes, "video/mp4", cors);
+    } catch (error) { return send(res, error.status || 500, { error: error.message || "Renderowanie nie powiodło się." }, "application/json; charset=utf-8", cors); }
   }
   return send(res, 404, { error: "Nie znaleziono endpointu." });
 });

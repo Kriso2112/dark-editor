@@ -5,11 +5,12 @@ It does not change `main`.
 
 ## Changes in this branch
 
-- Preserve the selected timeline scene in the project data and restore it after reload.
+- Preserve the selected timeline scene in project data and restore it after reload.
 - Save the selected scene whenever the user changes selection.
 - Update media records in IndexedDB without clearing all stored media first.
 - Prune only obsolete records belonging to this project, preserving blobs for scenes that are temporarily unavailable.
-- Add Playwright browser regression tests and a GitHub Actions workflow.
+- Integrate the experimental browser MP4 export into the 1.0 page using MediaRecorder and FFmpeg WebAssembly.
+- Add Playwright browser regression tests and GitHub Actions workflows.
 
 ## Local verification
 
@@ -19,10 +20,11 @@ npx playwright install chromium
 npm test
 ```
 
-The automated tests cover project restoration and the regression where one missing media blob must not erase the other saved media.
+The automated tests cover project restoration, the missing-media retention regression, the empty-export state, and a one-second image-to-MP4 export.
 
 ## Important limits
 
-- These browser tests do not replace testing on a real Android device.
-- The current 1.0 editor is a browser-based timeline/project editor. MP4 rendering/export is not yet integrated into this 1.0 root page.
-- Keep this branch separate from `main` until automated tests pass and Android media import, persistence and export are verified.
+- Automated tests run in desktop Chromium. They do not replace testing on a real Android device.
+- MP4 export has been verified only with a short one-second test clip in CI. A 10-minute export has not yet been verified on Android and may require substantial device memory and processing time.
+- The FFmpeg engine is downloaded from a CDN on first export, so the first export requires an internet connection.
+- Keep this branch separate from `main` until real-device tests cover gallery import, reload/restore, audio/video clips and longer exports.

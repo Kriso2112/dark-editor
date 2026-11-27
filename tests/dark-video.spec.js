@@ -62,3 +62,10 @@ test("exports a storyboard CSV file", async ({ page }) => {
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("dark-video-storyboard.csv");
 });
+
+test("updates the word count correctly for ordinary text", async ({ page }) => {
+  await page.locator("#topic").fill("Tajemnice piramid");
+  await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
+  await page.locator("#script").fill("jeden dwa trzy");
+  await expect(page.locator("#wordCount")).toHaveText("3 słów");
+});

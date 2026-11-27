@@ -1,4 +1,4 @@
-name: Deploy DARK WORK API
+name: Deploy DARK WORK BRIDGE
 
 on:
   push:
@@ -13,12 +13,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: dark-work-api-deploy
+  group: dark-work-bridge-deploy
   cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy existing Cloudflare Worker
+    name: Deploy new Cloudflare Worker
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

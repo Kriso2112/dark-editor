@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feature/dark-video-ai-foundation
+      - feature/dark-video-first-film-mvp
   pull_request:
     branches:
       - work/dark-editor-1.0-stabilization

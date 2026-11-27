@@ -99,3 +99,13 @@ test("blocks a paid DARK AI provider until the app has a consent flow", async ({
   await expect(page.locator("#notice")).toContainText("blokuje go do czasu wdrożenia ekranu zgody");
   await expect(page.locator("#workspace")).toBeHidden();
 });
+
+test("allows editing scene title and duration", async ({ page }) => {
+  await page.locator("#topic").fill("Tajemnice piramid");
+  await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
+  const first = page.locator("#scenes .scene-card").first();
+  await first.locator('input[data-field="title"]').fill("Nowy tytuł sceny");
+  await expect(first.locator(".scene-title")).toHaveText("Nowy tytuł sceny");
+  await first.locator('input[data-field="seconds"]').fill("45");
+  await expect(first.locator('input[data-field="seconds"]')).toHaveValue("45");
+});

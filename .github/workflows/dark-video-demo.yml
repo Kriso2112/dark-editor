@@ -17,4 +17,5 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test tests/dark-video.spec.js\n      - run: npm run test:dark-ai
+      - run: npx playwright test tests/dark-video.spec.js
+      - run: npm run test:dark-ai

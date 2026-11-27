@@ -8,7 +8,8 @@ A separate container service for real MP4 rendering. It is intentionally not dep
 - Creates original black-and-gold scene cards from the scene title and narration.
 - Generates Polish narration locally with eSpeak NG (voice quality is synthetic and is a temporary MVP voice).
 - Renders H.264/AAC MP4 in 16:9, 9:16 or 1:1.
-- Burns scene text into the picture and verifies the MP4 container signature before returning it.
+- Adds a subtle slow zoom to scene cards, mixes a quiet original ambient tone under narration, and embeds a synchronized Polish subtitle track.
+- Verifies the MP4 container signature before returning it.
 - Uses temporary job folders and removes them after rendering.
 
 This is a genuine rendering proof, not yet the final visual production pipeline: scene cards are not AI-generated footage, the voice is a local synthetic voice, and a dedicated music/subtitle-timing pipeline is still outstanding.

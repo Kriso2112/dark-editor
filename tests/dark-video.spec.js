@@ -112,11 +112,16 @@ test("allows editing scene title and duration", async ({ page }) => {
 
 
 test("exports an MP4 through the configured render service", async ({ page }) => {
-  await page.route("https://render.example.test/api/render", route => route.fulfill({
-    status: 200,
-    headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "video/mp4" },
-    body: Buffer.concat([Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,2,0,105,115,111,109,109,112,52,50]), Buffer.alloc(4096)])
-  }));
+  await page.route("https://render.example.test/api/render", route => {
+    if (route.request().method() === "OPTIONS") {
+      return route.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" } });
+    }
+    return route.fulfill({
+      status: 200,
+      headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "video/mp4" },
+      body: Buffer.concat([Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,2,0,105,115,111,109,109,112,52,50]), Buffer.alloc(4096)])
+    });
+  });
   await page.locator("#renderUrl").fill("https://render.example.test");
   await page.locator("#topic").fill("Test renderowania MP4");
   await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();

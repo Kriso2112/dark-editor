@@ -1,5 +1,5 @@
 /**
- * DARK WORK API — deployment bootstrap.
+ * DARK WORK BRIDGE — deployment bootstrap.
  *
  * This endpoint is intentionally limited to a health check.
  * It does not expose remote shell, arbitrary code execution, or account
@@ -13,7 +13,7 @@ export default {
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
       return Response.json({
         ok: true,
-        service: "dark-work-api",
+        service: "dark-work-bridge",
         status: "ready",
         purpose: "deployment-bootstrap",
         timestamp: new Date().toISOString()

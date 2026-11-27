@@ -1,4 +1,4 @@
-# DARK VIDEO — demo 0.2
+# DARK VIDEO — demo 0.2 + DARK AI API foundation
 
 Mobile-first static PWA prototype for the DARK VIDEO workflow. This is a separate app surface and does not alter the existing DARK EDITOR.
 
@@ -16,7 +16,7 @@ Open index.html in a modern browser for the editor/demo features. Service-worker
 - Install prompt button where the browser supports the install prompt event.
 
 ## Not included yet
-- No real LLM/DARK AI connection.
+- DARK AI Worker API scaffold exists in `dark-ai-worker/`; mock API mode and a consent-gated OpenAI adapter are implemented but not deployed or connected to this PWA.
 - No image/video generation, TTS, music generation, or MP4 rendering.
 - No server database, accounts, or cloud sync.
 - No integration with DARK EDITOR timeline yet.
@@ -27,7 +27,7 @@ The demo does not call external AI services and cannot incur provider charges. F
 ## Offline and project storage
 The service worker caches the app shell after the first successful online visit over HTTPS/localhost. Browser project storage is device- and browser-specific. Export JSON backups regularly; imported projects do not include media files because this version creates only a plan.
 
-## Next milestones
+## DARK AI backend foundation\nSee `../dark-ai-worker/README.md` for Worker routes, local setup, secret handling, and explicit cost-consent gates. The provider route remains disabled by default; no API key or paid service has been configured.\n\n## Next milestones
 1. Add and verify a server-side DARK AI API and a replaceable text-provider adapter.
 2. Generate structured Polish scripts and scene plans with validation and explicit cost approval.
 3. Add approved asset generation and Polish voice as optional, cost-gated steps.

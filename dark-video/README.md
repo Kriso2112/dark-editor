@@ -12,7 +12,8 @@ Open index.html in a modern browser for the editor/demo features. Service-worker
 - Scene editing, approval toggles, reordering, deletion, and adding scenes.
 - Local browser save/restore using localStorage.
 - Project JSON import/export, narration TXT export, and storyboard CSV export.
-- PWA manifest, SVG app icon, service worker, and offline shell caching on HTTPS/localhost.\n- DARK AI Worker API scaffold with health/generate routes, request validation, mock mode, and an optional server-side OpenAI adapter guarded by auth and per-job cost confirmation.
+- PWA manifest, SVG app icon, service worker, and offline shell caching on HTTPS/localhost.
+- Optional DARK AI API URL in the app, health check, and mock-only server generation. The app deliberately refuses to call a configured paid provider until a dedicated cost-consent screen exists.
 - Install prompt button where the browser supports the install prompt event.
 
 ## Not included yet

@@ -1,6 +1,9 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 const port = 8097;
 const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port) }, stdio: "ignore" });
@@ -30,5 +33,15 @@ test("renders a playable MP4 with Polish narration and scene captions", async ()
   const bytes=Buffer.from(await response.arrayBuffer());
   assert.ok(bytes.length>10000);
   assert.equal(bytes.subarray(4,8).toString(),"ftyp");
+  const dir=await mkdtemp(path.join(os.tmpdir(),"dark-video-test-"));
+  try {
+    const file=path.join(dir,"output.mp4"); await writeFile(file,bytes);
+    const probe=spawnSync("ffprobe",["-v","error","-show_entries","stream=codec_type:stream_tags=language","-of","json",file],{encoding:"utf8"});
+    assert.equal(probe.status,0,probe.stderr);
+    const types=JSON.parse(probe.stdout).streams.map(stream=>stream.codec_type);
+    assert.ok(types.includes("video"),"MP4 must contain video");
+    assert.ok(types.includes("audio"),"MP4 must contain Polish narration audio");
+    assert.ok(types.includes("subtitle"),"MP4 must contain a timed subtitle track");
+  } finally { await rm(dir,{recursive:true,force:true}); }
 });
 after(()=>server.kill("SIGTERM"));

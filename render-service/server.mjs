@@ -70,8 +70,8 @@ function subtitleLines(text) {
   }
   if (line) lines.push(line);
   const chunks = [];
-  for (let i=0;i<lines.length;i+=2) chunks.push(lines.slice(i,i+2).join("\\N"));
-  return chunks.join("\\N");
+  for (let i=0;i<lines.length;i+=2) chunks.push(lines.slice(i,i+2).join("\n"));
+  return chunks.join("\n");
 }
 async function readJson(req) {
   const chunks = []; let size = 0;

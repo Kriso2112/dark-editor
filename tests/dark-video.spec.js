@@ -109,3 +109,20 @@ test("allows editing scene title and duration", async ({ page }) => {
   await first.locator('input[data-field="seconds"]').fill("45");
   await expect(first.locator('input[data-field="seconds"]')).toHaveValue("45");
 });
+
+
+test("exports an MP4 through the configured render service", async ({ page }) => {
+  await page.route("https://render.example.test/api/render", route => route.fulfill({
+    status: 200,
+    headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "video/mp4" },
+    body: Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,2,0,105,115,111,109,109,112,52,50])
+  }));
+  await page.locator("#renderUrl").fill("https://render.example.test");
+  await page.locator("#topic").fill("Test renderowania MP4");
+  await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "EKSPORT MP4 ↓" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^dark-video-.*\\.mp4$/);
+  await expect(page.locator("#notice")).toContainText("Serwer przygotował plik MP4");
+});

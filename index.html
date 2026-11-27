@@ -412,6 +412,7 @@ function selectClip(index) {
   renderClips();
   currentElapsed=clipOffset(index);
   updateCaption(currentElapsed);
+  saveSilently();
 }
 
 function renderClips() {

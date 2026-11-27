@@ -98,7 +98,7 @@ async function render(input) {
       if (!Number.isFinite(duration) || duration <= 0) throw new Error("Nie udało się odczytać długości narracji sceny " + (i+1) + ".");
       subtitleEntries.push(String(i+1) + "\n" + srtTime(timeline) + " --> " + srtTime(timeline + duration) + "\n" + subtitleLines(scene.narration) + "\n");
       timeline += duration;
-      await run("ffmpeg", ["-y", "-loop", "1", "-framerate", "25", "-i", svg, "-i", wav, "-vf", "scale=" + width + ":" + height + ",format=yuv420p", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", mp4], 90000);
+      await run("ffmpeg", ["-y", "-loop", "1", "-framerate", "25", "-i", svg, "-i", wav, "-vf", "zoompan=z=min(zoom+0.0005\\,1.08):d=1:s=" + width + "x" + height + ":fps=25,format=yuv420p", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", mp4], 90000);
       segments.push(mp4);
     }
     const list = path.join(dir, "concat.txt");
@@ -106,7 +106,9 @@ async function render(input) {
     const joined = path.join(dir, "joined.mp4"), subtitles = path.join(dir, "captions.srt"), output = path.join(dir, "dark-video.mp4");
     await writeFile(subtitles, "\uFEFF" + subtitleEntries.join("\n"), "utf8");
     await run("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", joined], 90000);
-    await run("ffmpeg", ["-y", "-i", joined, "-i", subtitles, "-map", "0:v:0", "-map", "0:a:0", "-map", "1:0", "-c:v", "copy", "-c:a", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "language=pol", "-movflags", "+faststart", output], 90000);
+    const ambience = "aevalsrc=0.025*sin(2*PI*55*t)+0.012*sin(2*PI*82.41*t)+0.008*sin(2*PI*110*t):s=44100:d=" + timeline;
+    const fadeOut = Math.max(0, timeline - 2);
+    await run("ffmpeg", ["-y", "-i", joined, "-i", subtitles, "-f", "lavfi", "-i", ambience, "-filter_complex", "[0:a]volume=1.0[voice];[2:a]volume=0.6,afade=t=in:st=0:d=1,afade=t=out:st=" + fadeOut + ":d=2[bed];[voice][bed]amix=inputs=2:duration=first:dropout_transition=2[mix]", "-map", "0:v:0", "-map", "[mix]", "-map", "1:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-c:s", "mov_text", "-metadata:s:s:0", "language=pol", "-movflags", "+faststart", output], 120000);
     const bytes = await readFile(output);
     if (bytes.length < 2048 || bytes.subarray(4,8).toString() !== "ftyp") throw new Error("Weryfikacja pliku MP4 nie powiodła się.");
     return bytes;

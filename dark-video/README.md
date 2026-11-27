@@ -1,4 +1,4 @@
-# DARK VIDEO — demo 0.2 + DARK AI API foundation
+# DARK VIDEO — demo 0.3 + DARK AI API foundation
 
 Mobile-first static PWA prototype for the DARK VIDEO workflow. This is a separate app surface and does not alter the existing DARK EDITOR.
 
@@ -12,7 +12,7 @@ Open index.html in a modern browser for the editor/demo features. Service-worker
 - Scene editing, approval toggles, reordering, deletion, and adding scenes.
 - Local browser save/restore using localStorage.
 - Project JSON import/export, narration TXT export, and storyboard CSV export.
-- PWA manifest, SVG app icon, service worker, and offline shell caching on HTTPS/localhost.
+- PWA manifest, SVG app icon, service worker, and offline shell caching on HTTPS/localhost.\n- DARK AI Worker API scaffold with health/generate routes, request validation, mock mode, and an optional server-side OpenAI adapter guarded by auth and per-job cost confirmation.
 - Install prompt button where the browser supports the install prompt event.
 
 ## Not included yet

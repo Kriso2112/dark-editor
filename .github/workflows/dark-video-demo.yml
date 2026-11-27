@@ -16,7 +16,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
       - run: npm install
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test tests/dark-video.spec.js
       - run: npm run test:dark-ai
+      - run: npm run test:render
+      - name: Build isolated render container
+        run: docker build -t dark-video-render ./render-service

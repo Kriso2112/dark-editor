@@ -21,7 +21,7 @@ test("generate endpoint returns a structured mock project", async () => {
   assert.equal(body.mode, "mock");
   assert.equal(body.project.title, brief.topic);
   assert.ok(body.project.scenes.length > 0);
-  assert.match(body.project.script, /pytani/i);
+  assert.match(body.project.script, /Tajemnice piramid/i);
 });
 
 test("rejects malformed or unsupported briefs", async () => {

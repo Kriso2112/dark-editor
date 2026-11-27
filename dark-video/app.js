@@ -1,6 +1,6 @@
 (() => {
 "use strict";
-const $=id=>document.getElementById(id), KEY="darkVideoDemoProjectV1";
+const $=id=>document.getElementById(id), KEY="darkVideoDemoProjectV1", API_KEY="darkVideoApiBaseV1";
 let mode="auto", project=null;
 const templates={
 wiedza:[["Mocne otwarcie","Zacznij od pytania, które podważa to, co widz uważa za oczywiste."],["Kontekst","Przedstaw temat i wyjaśnij, dlaczego od lat budzi zainteresowanie."],["Najważniejsze tropy","Pokaż najciekawsze fakty, odkrycia lub hipotezy. Oddziel fakty od spekulacji."],["Co wiemy naprawdę?","Zestaw popularne opowieści z tym, co mówią wiarygodne źródła."],["Finał","Zostaw widza z mocną myślą i pytaniem do dyskusji."]],
@@ -13,9 +13,20 @@ const visuals={wiedza:["Ciemne ujęcie otwierające, zbliżenie na detal i mocny
 function esc(v){return String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function wordCount(s){return(s.trim().match(/\S+/g)||[]).length;}
 function notice(s,error){$("notice").textContent=s;$("notice").classList.toggle("error",!!error);}
-function create(){
+async function create(){
 const topic=$("topic").value.trim();if(topic.length<4){notice("Wpisz temat — najlepiej przynajmniej kilka słów.",true);$("topic").focus();return;}
+let base="";try{base=getApiBase();}catch(e){notice(e.message,true);return;}
 const category=$("category").value,duration=Number($("duration").value),plan=templates[category]||templates.wiedza,count=duration<=60?4:duration<=180?5:duration<=300?6:8;
+if(base){
+  try{
+    const healthResponse=await fetch(base+"/api/health");if(!healthResponse.ok)throw Error("Serwer DARK AI nie odpowiada poprawnie.");
+    const health=await healthResponse.json();
+    if(health.mode!=="mock"){notice("Serwer ma skonfigurowany płatny model, ale aplikacja blokuje go do czasu wdrożenia ekranu zgody i kosztów.",true);return;}
+    const response=await fetch(base+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic,category,duration,format:$("format").value,tone:$("tone").value,mode})});
+    const result=await response.json();if(!response.ok||!result.project)throw Error(result.error||"Nie udało się wygenerować planu przez DARK AI API.");
+    project=result.project;project.mode=mode;project.serverMode="mock";render();notice("Plan otrzymano z DARK AI API w bezpłatnym trybie testowym — to nadal szkic demonstracyjny.");$("workspace").hidden=false;$("workspace").scrollIntoView({behavior:"smooth",block:"start"});return;
+  }catch(e){notice("Błąd połączenia z DARK AI API: "+(e.message||"spróbuj ponownie."),true);return;}
+}
 const scenes=Array.from({length:count},(_,i)=>{const b=plan[i%plan.length];return{id:"scene-"+(i+1)+"-"+Date.now(),title:i===0?"Otwarcie: "+b[0]:b[0],narration:i===0?"Wyobraź sobie, że "+topic.charAt(0).toLowerCase()+topic.slice(1)+". "+tones[$("tone").value]:b[1]+" Temat tej sceny: "+topic,visual:(visuals[category]||visuals.wiedza)[i%5],seconds:Math.max(5,Math.round(duration/count)),approved:false};});
 project={version:1,title:topic,category,duration,format:$("format").value,tone:$("tone").value,mode,createdAt:new Date().toISOString(),script:"Czy zastanawiałeś się kiedyś nad tym: "+topic+"?\n\n"+tones[$("tone").value]+"\n\n"+scenes.map((s,i)=>(i+1)+". "+s.title+"\n"+s.narration).join("\n\n")+"\n\nTo dopiero początek. W kolejnej części przyjrzymy się temu jeszcze dokładniej.",scenes};
 render();notice("Gotowe! Przygotowano szkic scenariusza i storyboardu. To lokalny szablon demonstracyjny, nie wynik modelu AI.");$("workspace").hidden=false;$("workspace").scrollIntoView({behavior:"smooth",block:"start"});
@@ -24,6 +35,8 @@ function render(){
 if(!project)return;$("projectTitle").textContent=project.title;$("projectMeta").textContent=(project.duration>=60?project.duration/60+" min":project.duration+" s")+" · "+project.format+" · "+project.mode.toUpperCase();$("script").value=project.script;$("wordCount").textContent=wordCount(project.script)+" słów";$("sceneCount").textContent=project.scenes.length+" scen";
 $("scenes").innerHTML=project.scenes.map((s,i)=>'<article class="scene-card" data-id="'+esc(s.id)+'"><div class="scene-top"><span class="scene-number">'+String(i+1).padStart(2,"0")+'</span><span class="scene-title">'+esc(s.title)+'</span><span class="scene-time">'+s.seconds+'s</span></div><div class="scene-body"><label>TEKST / OPIS SCENY</label><textarea data-field="narration" rows="3">'+esc(s.narration)+'</textarea><div class="scene-visual"><b>PROPOZYCJA OBRAZU:</b> '+esc(s.visual)+'</div><div class="scene-actions"><button data-action="approve">'+(s.approved?"✓ ZATWIERDZONA":"ZATWIERDŹ")+'</button><button data-action="up">↑ GÓRA</button><button data-action="down">↓ DÓŁ</button><button data-action="delete">USUŃ</button></div></div></article>').join("");
 }
+function getApiBase(){const value=$("apiUrl").value.trim();if(!value)return "";const url=new URL(value);if(url.protocol!=="https:"&&!(url.protocol==="http:"&&["localhost","127.0.0.1"].includes(url.hostname)))throw Error("Adres API musi używać HTTPS (wyjątek: localhost).");return url.href.replace(/\\/+$/,"");}
+async function testApi(){try{const base=getApiBase();if(!base)throw Error("Wpisz adres serwera DARK AI.");const response=await fetch(base+"/api/health");if(!response.ok)throw Error("Serwer zwrócił HTTP "+response.status);const data=await response.json();localStorage.setItem(API_KEY,base);notice("Połączenie działa. DARK AI: "+(data.mode==="mock"?"tryb testowy bez opłat.":"model płatny skonfigurowany — generowanie pozostaje zablokowane."));}catch(e){notice(e.message||"Nie udało się połączyć z API.",true);}}
 function updateMode(){document.querySelectorAll("[data-mode]").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));}
 function save(){if(!project)return;project.script=$("script").value;try{localStorage.setItem(KEY,JSON.stringify(project));notice("Projekt zapisany w pamięci tej przeglądarki na tym urządzeniu.");}catch(e){notice("Nie udało się zapisać. Wyeksportuj kopię JSON.",true);}}
 function downloadBlob(content,type,filename){const blob=new Blob([content],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1200);}
@@ -31,7 +44,7 @@ function download(){if(!project)return;project.script=$("script").value;download
 function downloadScript(){if(!project)return;project.script=$("script").value;downloadBlob(project.script,"text/plain;charset=utf-8","dark-video-scenariusz.txt");}
 function downloadStoryboard(){if(!project)return;const rows=[["Scena","Tytuł","Czas (s)","Narracja","Propozycja obrazu","Zatwierdzona"],...project.scenes.map((s,i)=>[i+1,s.title,s.seconds,s.narration,s.visual,s.approved?"tak":"nie"])];const csv=rows.map(row=>row.map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(";")).join("\r\n");downloadBlob("\uFEFF"+csv,"text/csv;charset=utf-8","dark-video-storyboard.csv");}
 async function importFile(file){if(!file)return;try{const d=JSON.parse(await file.text());if(!d||d.version!==1||typeof d.title!=="string"||!Array.isArray(d.scenes)||typeof d.script!=="string")throw Error("Nieprawidłowy plik projektu DARK VIDEO.");project=d;project.scenes=d.scenes.map((s,i)=>({id:String(s.id||"import-"+i),title:String(s.title||"Scena "+(i+1)),narration:String(s.narration||""),visual:String(s.visual||""),seconds:Math.max(1,Number(s.seconds)||5),approved:!!s.approved}));$("topic").value=project.title;$("category").value=project.category||"wiedza";$("duration").value=String(project.duration||60);$("format").value=project.format||"16:9";$("tone").value=project.tone||"mroczny";mode=project.mode==="manual"?"manual":"auto";updateMode();render();$("workspace").hidden=false;notice("Projekt wczytany. Zapisz go, aby zachować zmiany.");$("workspace").scrollIntoView({behavior:"smooth"});}catch(e){notice(e.message||"Nie udało się wczytać pliku.",true);}finally{$("importProject").value="";}}
-$("generate").addEventListener("click",create);$("topic").addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))create();});
+$("generate").addEventListener("click",create);$("testApi").addEventListener("click",testApi);$("topic").addEventListener("keydown",e=>{if(e.key==="Enter"&&(e.ctrlKey||e.metaKey))create();});
 document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",()=>{mode=b.dataset.mode;updateMode();}));
 $("script").addEventListener("input",()=>{$("wordCount").textContent=wordCount($("script").value)+" słów";});
 $("scenes").addEventListener("input",e=>{const c=e.target.closest(".scene-card");if(c&&e.target.dataset.field){const s=project.scenes.find(x=>x.id===c.dataset.id);if(s)s[e.target.dataset.field]=e.target.value;}});
@@ -42,5 +55,5 @@ let installPrompt=null;
 window.addEventListener("beforeinstallprompt",event=>{event.preventDefault();installPrompt=event;$("installApp").hidden=false;});
 $("installApp").addEventListener("click",async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$("installApp").hidden=true;});
 if("serviceWorker" in navigator && location.protocol!=="file:"){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}
-try{const saved=localStorage.getItem(KEY);if(saved){const d=JSON.parse(saved);if(d&&d.version===1&&Array.isArray(d.scenes)){project=d;$("topic").value=d.title||"";$("category").value=d.category||"wiedza";$("duration").value=String(d.duration||60);$("format").value=d.format||"16:9";$("tone").value=d.tone||"mroczny";mode=d.mode==="manual"?"manual":"auto";updateMode();render();$("workspace").hidden=false;notice("Przywrócono ostatni projekt z pamięci przeglądarki.");}}}catch(e){notice("Nie udało się odczytać zapisu. Możesz wczytać kopię JSON.",true);}
+try{$("apiUrl").value=localStorage.getItem(API_KEY)||"";}catch(e){}\ntry{const saved=localStorage.getItem(KEY);if(saved){const d=JSON.parse(saved);if(d&&d.version===1&&Array.isArray(d.scenes)){project=d;$("topic").value=d.title||"";$("category").value=d.category||"wiedza";$("duration").value=String(d.duration||60);$("format").value=d.format||"16:9";$("tone").value=d.tone||"mroczny";mode=d.mode==="manual"?"manual":"auto";updateMode();render();$("workspace").hidden=false;notice("Przywrócono ostatni projekt z pamięci przeglądarki.");}}}catch(e){notice("Nie udało się odczytać zapisu. Możesz wczytać kopię JSON.",true);}
 })();

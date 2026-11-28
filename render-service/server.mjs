@@ -6,6 +6,9 @@ import path from "node:path";
 
 const PORT = Number(process.env.PORT || 8080);
 const MAX_BODY = 2 * 1024 * 1024;
+const MAX_SCENES = 120;
+const MAX_FILM_SECONDS = 10 * 60;
+const MAX_TOTAL_NARRATION_CHARS = 120000;
 const FORMATS = { "16:9": [1280, 720], "9:16": [720, 1280], "1:1": [900, 900] };
 
 function send(res, status, data, type = "application/json; charset=utf-8", extraHeaders = {}) {
@@ -80,11 +83,15 @@ async function readJson(req) {
 }
 async function render(input) {
   if (!input || typeof input.topic !== "string" || input.topic.trim().length < 3 || input.topic.length > 240) throw Object.assign(new Error("Temat musi mieć od 3 do 240 znaków."), { status: 400 });
-  if (!Array.isArray(input.scenes) || input.scenes.length < 1 || input.scenes.length > 12) throw Object.assign(new Error("Film musi zawierać od 1 do 12 scen."), { status: 400 });
+  if (!Array.isArray(input.scenes) || input.scenes.length < 1 || input.scenes.length > MAX_SCENES) throw Object.assign(new Error("Film musi zawierać od 1 do " + MAX_SCENES + " scen/segmentów."), { status: 400 });
+  if (input.scenes.some(scene => !scene || typeof scene !== "object" || Array.isArray(scene))) throw Object.assign(new Error("Każdy segment musi być prawidłowym obiektem sceny."), { status: 400 });
+  if (input.scenes.some(scene => String(scene.narration || "").length > 10000)) throw Object.assign(new Error("Tekst pojedynczej sceny przekracza limit 10 000 znaków."), { status: 413 });
+  const totalNarrationChars = input.scenes.reduce((sum, scene) => sum + String(scene.narration || "").length, 0);
+  if (totalNarrationChars > MAX_TOTAL_NARRATION_CHARS) throw Object.assign(new Error("Łączny tekst lektora przekracza limit 120 000 znaków."), { status: 413 });
   const dimensions = FORMATS[input.format || "16:9"];
   if (!dimensions) throw Object.assign(new Error("Nieobsługiwany format obrazu."), { status: 400 });
   const [width, height] = dimensions;
-  const scenes = input.scenes.map(s => ({ title: String(s.title || "").slice(0,160), narration: String(s.narration || "").slice(0,5000), visual: String(s.visual || "").slice(0,500), seconds: Math.max(1, Math.min(120, Number(s.seconds) || 5)) }));
+  const scenes = input.scenes.map(s => ({ title: String(s.title || "").slice(0,160), narration: String(s.narration || "").slice(0,10000), visual: String(s.visual || "").slice(0,500), seconds: Math.max(1, Math.min(600, Number(s.seconds) || 5)) }));
   if (scenes.some(s => !s.narration.trim())) throw Object.assign(new Error("Każda scena musi mieć tekst narracji."), { status: 400 });
   const dir = await mkdtemp(path.join(os.tmpdir(), "dark-video-"));
   try {
@@ -95,7 +102,8 @@ async function render(input) {
       await writeFile(svg, svgForScene(scene, i, scenes.length, width, height, input.topic), "utf8");
       await run("espeak-ng", ["-v", "pl", "-s", "148", "-w", wav, scene.narration], 30000);
       const duration = Number(await capture("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", wav]));
-      if (!Number.isFinite(duration) || duration <= 0) throw new Error("Nie udało się odczytać długości narracji sceny " + (i+1) + ".");
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("Nie udało się odczytać długości narracji segmentu " + (i+1) + ".");
+      if (timeline + duration > MAX_FILM_SECONDS) throw Object.assign(new Error("Film przekracza limit 10 minut. Podziel go na krótszy projekt."), { status: 413 });
       subtitleEntries.push(String(i+1) + "\n" + srtTime(timeline) + " --> " + srtTime(timeline + duration) + "\n" + subtitleLines(scene.narration) + "\n");
       timeline += duration;
       await run("ffmpeg", ["-y", "-loop", "1", "-framerate", "25", "-i", svg, "-i", wav, "-vf", "zoompan=z=min(zoom+0.0005\\,1.08):d=1:s=" + width + "x" + height + ":fps=25,format=yuv420p", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", mp4], 90000);
@@ -120,7 +128,7 @@ const server = http.createServer(async (req, res) => {
   if (origin && (!allowedOrigin || origin !== allowedOrigin)) return send(res, 403, { error: "Origin nie jest dozwolony. Ustaw ALLOWED_ORIGIN dla adresu aplikacji." });
   const cors = origin ? { "Access-Control-Allow-Origin": allowedOrigin, "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Vary": "Origin" } : {};
   if (req.method === "OPTIONS") { res.writeHead(204, { ...cors, "Access-Control-Max-Age": "86400" }); return res.end(); }
-  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, service: "DARK VIDEO Render Engine", ffmpeg: "required", tts: "espeak-ng Polish voice", formats: Object.keys(FORMATS), maxScenes: 12 }, "application/json; charset=utf-8", cors);
+  if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true, service: "DARK VIDEO Render Engine", ffmpeg: "required", tts: "espeak-ng Polish voice", formats: Object.keys(FORMATS), maxScenes: MAX_SCENES, maxFilmSeconds: MAX_FILM_SECONDS, renderMode: "multi-part-concat" }, "application/json; charset=utf-8", cors);
   if (req.method === "POST" && url.pathname === "/api/render") {
     try {
       const input = await readJson(req), bytes = await render(input);

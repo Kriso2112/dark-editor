@@ -49,3 +49,14 @@ Pull request: https://github.com/Kriso2112/dark-editor/pull/12 (draft, targets w
 ## Completion rule
 
 Do not report a percentage for the whole product based only on code additions. Do not call the first release complete until a user can enter a topic, obtain a complete film without timeline editing, download the MP4 and play it on Android.
+
+
+## Kolejka renderowania — etap przygotowany do testów
+
+- PWA dodaje render do kolejki przez `POST /api/render/jobs`, odczytuje status i procent postępu oraz udostępnia pobranie MP4.
+- Zadania i gotowe pliki są zapisywane w katalogu danych renderera; po restarcie zadania przerwane wracają do kolejki.
+- Nieudane zadanie można ponowić. Ponowienie oraz odzyskanie po restarcie zaczyna render od początku, a nie od ostatniej klatki.
+- Istniejący synchroniczny endpoint `POST /api/render` pozostaje dla zgodności.
+- Kolejka obsługuje jedną instancję renderera i do 25 oczekujących zadań. Nie ma jeszcze anulowania, automatycznego czyszczenia danych ani obsługi wieloinstancyjnej.
+- Zmiany są w draft PR #14. CI dla najnowszego commita jest w toku; nie uznajemy funkcji za zweryfikowaną, dopóki wszystkie testy i build nie przejdą.
+- Nie wykonano deployu ani testu na fizycznym Androidzie.

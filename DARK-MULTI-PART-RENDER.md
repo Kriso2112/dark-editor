@@ -34,7 +34,7 @@ The system does not generate ten separate AI videos. It renders scene-level medi
 ## Known limitations
 
 - The HTTP render request is synchronous. Long jobs may be interrupted by mobile browser, proxy or hosting timeouts.
-- There is no durable job queue, progress polling, cancellation or retry/resume yet.
+- A filesystem-backed asynchronous queue now provides job IDs, progress polling, retry from the beginning and completed MP4 download. It is single-instance and has no cancellation, multi-instance locking or automated retention cleanup.
 - Visuals are currently designed black-and-gold scene cards, not realistic AI footage.
 - Polish speech is synthetic eSpeak NG.
 - The ambient sound is a generated tone, not a finished soundtrack.
@@ -43,7 +43,7 @@ The system does not generate ten separate AI videos. It renders scene-level medi
 
 ## Next engineering milestone
 
-Introduce durable asynchronous render jobs with an ID, queued/running/completed/failed states, progress, retry and cancellation. Store intermediate segments safely and resume from completed segments after a failure. The Android PWA should poll job status and download the final MP4 only after completion.
+Harden the queue with cancellation, multi-instance-safe locking, retention cleanup, authentication, rate limiting, storage quotas and resumable segment checkpoints. The Android PWA polls job status and downloads the final MP4 only after completion. A retry or restart currently begins the render from the start.
 
 
 ## Kolejka renderowania (wersja eksperymentalna)

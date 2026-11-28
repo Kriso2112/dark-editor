@@ -69,6 +69,11 @@ test("production disables the legacy synchronous render endpoint", async () => {
     await rm(productionDir,{recursive:true,force:true});
   }
 });
+test("production requires an exact HTTPS origin", async () => {
+  const result = spawnSync(process.execPath, ["server.mjs"], { env:{ ...process.env, NODE_ENV:"production", PORT:"8102", DARK_VIDEO_JOBS_DIR:path.join(jobsDir,"missing-origin"), RENDER_API_TOKEN:"b".repeat(64), ALLOWED_ORIGIN:"http://insecure.example" }, encoding:"utf8", timeout:5000 });
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/dokładny origin HTTPS/);
+});
 test("rejects invalid resource-limit configuration", async () => {
   const result = spawnSync(process.execPath, ["server.mjs"], { env:{ ...process.env, NODE_ENV:"test", PORT:"8099", DARK_VIDEO_JOBS_DIR:path.join(jobsDir,"bad-limit"), RENDER_API_TOKEN:"test-token", DARK_VIDEO_MAX_STORAGE_BYTES:"NaN" }, encoding:"utf8", timeout:5000 });
   assert.notEqual(result.status,0);

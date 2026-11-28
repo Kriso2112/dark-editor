@@ -2,7 +2,7 @@
 
 Updated: 2026-11-28
 Branch: feature/dark-video-secure-staging-hardening (based on feature/dark-video-multipart-render-clean)
-Pull request: pending creation; the preceding implementation remains in draft PR #14.
+Pull request: https://github.com/Kriso2112/dark-editor/pull/15 (draft); underlying multi-part renderer remains in draft PR #14.
 
 ## Implemented in this branch
 

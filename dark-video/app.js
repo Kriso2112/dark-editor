@@ -24,12 +24,12 @@ if(base){
     if(health.mode!=="mock"){notice("Serwer ma skonfigurowany płatny model, ale aplikacja blokuje go do czasu wdrożenia ekranu zgody i kosztów.",true);return;}
     const response=await fetch(base+"/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic,category,duration,format:$("format").value,tone:$("tone").value,mode})});
     const result=await response.json();if(!response.ok||!result.project)throw Error(result.error||"Nie udało się wygenerować planu przez DARK AI API.");
-    project=result.project;project.mode=mode;project.serverMode="mock";render();notice("Plan otrzymano z DARK AI API w bezpłatnym trybie testowym — to nadal szkic demonstracyjny.");$("workspace").hidden=false;$("workspace").scrollIntoView({behavior:"smooth",block:"start"});return;
+    project=result.project;project.mode=mode;project.serverMode="mock";render();persistProject();notice("Plan otrzymano z DARK AI API w bezpłatnym trybie testowym — to nadal szkic demonstracyjny.");$("workspace").hidden=false;$("workspace").scrollIntoView({behavior:"smooth",block:"start"});return;
   }catch(e){notice("Błąd połączenia z DARK AI API: "+(e.message||"spróbuj ponownie."),true);return;}
 }
 const scenes=Array.from({length:count},(_,i)=>{const b=plan[i%plan.length];return{id:"scene-"+(i+1)+"-"+Date.now(),title:i===0?"Otwarcie: "+b[0]:b[0],narration:i===0?"Wyobraź sobie, że "+topic.charAt(0).toLowerCase()+topic.slice(1)+". "+tones[$("tone").value]:b[1]+" Temat tej sceny: "+topic,visual:(visuals[category]||visuals.wiedza)[i%5],seconds:Math.max(5,Math.round(duration/count)),approved:false};});
 project={version:1,title:topic,category,duration,format:$("format").value,tone:$("tone").value,mode,createdAt:new Date().toISOString(),script:"Czy zastanawiałeś się kiedyś nad tym: "+topic+"?\n\n"+tones[$("tone").value]+"\n\n"+scenes.map((s,i)=>(i+1)+". "+s.title+"\n"+s.narration).join("\n\n")+"\n\nTo dopiero początek. W kolejnej części przyjrzymy się temu jeszcze dokładniej.",scenes};
-render();notice("Gotowe! Przygotowano szkic scenariusza i storyboardu. To lokalny szablon demonstracyjny, nie wynik modelu AI.");$("workspace").hidden=false;$("workspace").scrollIntoView({behavior:"smooth",block:"start"});
+render();persistProject();notice("Gotowe! Przygotowano szkic scenariusza i storyboardu. To lokalny szablon demonstracyjny, nie wynik modelu AI.");$("workspace").hidden=false;$("workspace").scrollIntoView({behavior:"smooth",block:"start"});
 }
 function render(){
 if(!project)return;$("projectTitle").textContent=project.title;$("projectMeta").textContent=(project.duration>=60?project.duration/60+" min":project.duration+" s")+" · "+project.format+" · "+project.mode.toUpperCase();$("script").value=project.script;$("wordCount").textContent=wordCount(project.script)+" słów";$("sceneCount").textContent=project.scenes.length+" scen";

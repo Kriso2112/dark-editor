@@ -1,0 +1,27 @@
+name: DARK VIDEO demo checks
+on:
+  push:
+    branches:
+      - feature/dark-video-ai-foundation
+      - feature/dark-video-first-film-mvp
+  pull_request:
+    branches:
+      - work/dark-editor-1.0-stabilization
+      - feature/dark-video-first-film-mvp
+      - main
+jobs:
+  browser-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg espeak-ng
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test tests/dark-video.spec.js
+      - run: npm run test:dark-ai
+      - run: npm run test:render
+      - name: Build isolated render container
+        run: docker build -t dark-video-render ./render-service

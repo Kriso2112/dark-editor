@@ -25,7 +25,13 @@ test("rejects incomplete film manifests", async () => {
   const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Test",format:"16:9",scenes:[]})});
   assert.equal(response.status,400);
 });
-test("rejects manifests beyond the multi-part scene limit", async () => {\n  await waitReady();\n  const scenes=Array.from({length:121},(_,i)=>({title:"Scena "+i,narration:"Tekst testowy."}));\n  const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Limit segmentów",format:"16:9",scenes})});\n  assert.equal(response.status,400);\n});\ntest("renders a playable multi-part MP4 with continuous narration and subtitle track", async () => {
+test("rejects manifests beyond the multi-part scene limit", async () => {
+  await waitReady();
+  const scenes=Array.from({length:121},(_,i)=>({title:"Scena "+i,narration:"Tekst testowy."}));
+  const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Limit segmentów",format:"16:9",scenes})});
+  assert.equal(response.status,400);
+});
+test("renders a playable multi-part MP4 with continuous narration and subtitle track", async () => {
   await waitReady();
   const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Test DARK VIDEO",format:"16:9",scenes:[{title:"Pierwsza scena",narration:"To jest pierwsza część testu polskiego lektora.",seconds:5},{title:"Druga scena",narration:"A tutaj zaczyna się druga część, połączona w jeden film.",seconds:5}]})});
   assert.equal(response.status,200);

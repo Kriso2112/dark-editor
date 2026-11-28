@@ -1,8 +1,8 @@
 # DARK VIDEO — implementation status
 
 Updated: 2026-11-28
-Branch: feature/dark-video-multipart-render (based on feature/dark-video-first-film-mvp)
-Pull request: https://github.com/Kriso2112/dark-editor/pull/12 (draft, targets work/dark-editor-1.0-stabilization).
+Branch: feature/dark-video-multipart-render-clean (based on feature/dark-video-first-film-mvp)
+Pull request: https://github.com/Kriso2112/dark-editor/pull/14 (draft, targets feature/dark-video-first-film-mvp).
 
 ## Implemented in this branch
 
@@ -28,7 +28,7 @@ Pull request: https://github.com/Kriso2112/dark-editor/pull/12 (draft, targets w
 - The current Polish narrator is synthetic eSpeak NG, not a natural neural voice.
 - The current audio bed is a generated ambient tone, not a finished licensed music score. Subtitles are currently generated from the Polish narration and embedded as a single MP4 subtitle track; standalone SRT/VTT export and fine-grained word-level timing are not implemented.
 - Script generation is still template/demo based unless the separately configured paid AI provider is enabled through a future cost-consent interface.
-- Rendering is currently a synchronous HTTP request; there is no durable job queue, progress, retry/cancel, user authentication or storage retention system. Long renders may be interrupted by client/proxy timeouts.
+- Rendering supports an asynchronous filesystem-backed queue with progress, retry from the beginning and MP4 download; the synchronous endpoint remains for compatibility. There is no cancellation, multi-instance locking, authentication, rate limiting, quota or retention cleanup. Long renders still need persistent mounted storage.
 - The renderer has not been deployed; the user must not enter a public endpoint until deployment and HTTPS/authentication/CORS setup are reviewed.
 - No paid AI service, API key or secret was configured.
 - Automated tests now cover a two-part MP4 render and verify video, audio and subtitle streams, plus the 120-scene limit. The final CI result for this new branch is not yet confirmed.
@@ -41,9 +41,9 @@ Pull request: https://github.com/Kriso2112/dark-editor/pull/12 (draft, targets w
 2. Add scene image/video assets with licence/source tracking.
 3. Add natural Polish TTS options and synchronized subtitle generation.
 4. Add licensed/original music and volume ducking under narration.
-5. Add asynchronous render jobs, progress, retries, cancellation and safe storage; current multi-part render is synchronous and may hit mobile/proxy timeouts.
+5. Harden the asynchronous render queue with cancellation, multi-instance locking, retention cleanup, authentication, rate limits and resumable segment checkpoints.
 6. Add authentication, rate limiting, quotas and cleanup policies before public hosting.
-7. Test a complete 60–90 second film on a real Android phone, then validate 5–10 minute multi-part renders after asynchronous job support is added.
+7. Deploy only after security and storage controls are reviewed; then test a complete 60–90 second film on a real Android phone and validate longer renders.
 8. Verify audio/video quality, aspect ratios, subtitle legibility, file size and recovery after refresh.
 
 ## Completion rule

@@ -1,0 +1,39 @@
+services:
+  dark-video-render:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dark-video-render:staging
+    container_name: dark-video-render-staging
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env.staging
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - dark-video-staging-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 3g
+    cpus: 2.0
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  dark-video-staging-data:
+    name: dark-video-staging-data

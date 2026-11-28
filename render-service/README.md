@@ -48,3 +48,17 @@ The renderer creates a temporary MP4 for each scene, then joins those parts with
 - No arbitrary input file paths, shell commands, remote URLs, API keys or paid provider calls.
 - Run behind HTTPS and an authenticated gateway before public deployment. Add job queue, rate limits, storage quotas and cancellation before production.
 - No paid AI provider is configured. No service is deployed by this change.
+
+
+## Kolejka renderowania (wersja eksperymentalna)
+
+DARK VIDEO udostępnia teraz asynchroniczne zadania:
+- `POST /api/render/jobs` — dodaje zadanie i zwraca `jobId` oraz status HTTP 202.
+- `GET /api/render/jobs/:id` — zwraca status, etap, procent postępu i liczbę prób.
+- `POST /api/render/jobs/:id/retry` — ponawia nieudane zadanie od początku.
+- `GET /api/render/jobs/:id/download` — pobiera MP4 po zakończeniu.
+- Dotychczasowy synchroniczny `POST /api/render` pozostaje dla zgodności.
+
+Metadane zadań, wejściowy manifest i gotowe MP4 są przechowywane na dysku w katalogu `DARK_VIDEO_JOBS_DIR` (domyślnie `render-service/data/render-jobs`). Przy restarcie serwera zadania przerwane w statusie queued/running wracają do kolejki i renderują się od początku. To nie jest kontynuacja od ostatniej klatki ani od ostatniego segmentu. Jedna instancja renderera przetwarza zadania kolejno, a limit oczekujących zadań wynosi 25.
+
+Interfejs PWA zapamiętuje identyfikator zadania, odświeża status i pokazuje postęp. Po ponownym otwarciu strony próbuje odtworzyć status ostatniego zadania. Nieudane zadanie można ponowić, a gotowy film pobrać. Brak jeszcze anulowania zadania, wieloinstancyjnej blokady kolejki, automatycznego czyszczenia starych plików i testów obciążeniowych. Katalog danych musi być trwałym wolumenem na hostingu; efemeryczny filesystem hostingu nie gwarantuje zachowania zadań po wymianie instancji.

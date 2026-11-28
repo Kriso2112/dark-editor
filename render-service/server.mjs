@@ -143,6 +143,8 @@ async function render(input, onProgress = async () => {}) {
     const ambience = "aevalsrc=0.025*sin(2*PI*55*t)+0.012*sin(2*PI*82.41*t)+0.008*sin(2*PI*110*t):s=44100:d=" + timeline;
     const fadeOut = Math.max(0, timeline - 2);
     await run("ffmpeg", ["-y", "-i", joined, "-i", subtitles, "-f", "lavfi", "-i", ambience, "-filter_complex", "[0:a]volume=1.0[voice];[2:a]volume=0.6,afade=t=in:st=0:d=1,afade=t=out:st=" + fadeOut + ":d=2[bed];[voice][bed]amix=inputs=2:duration=first:dropout_transition=2[mix]", "-map", "0:v:0", "-map", "[mix]", "-map", "1:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-c:s", "mov_text", "-metadata:s:s:0", "language=pol", "-movflags", "+faststart", output], 120000);
+    const outputSize = (await stat(output)).size;
+    if (outputSize > MAX_OUTPUT_BYTES) throw Object.assign(new Error("Wygenerowany film przekracza limit rozmiaru pliku."), { status: 413 });
     const bytes = await readFile(output);
     if (bytes.length < 2048 || bytes.subarray(4,8).toString() !== "ftyp") throw new Error("Weryfikacja pliku MP4 nie powiodła się.");
     await onProgress({ progress: 98, stage: "Weryfikacja pliku MP4" });
@@ -324,6 +326,7 @@ const server = http.createServer(async (req, res) => {
 });
 (async () => {
   if (process.env.NODE_ENV === "production" && !renderToken) throw new Error("RENDER_API_TOKEN jest wymagany w trybie production.");
+  if (process.env.NODE_ENV === "production" && Buffer.byteLength(renderToken, "utf8") < 32) throw new Error("RENDER_API_TOKEN musi mieć co najmniej 32 bajty losowego sekretu.");
   if (!renderToken && process.env.NODE_ENV !== "production" && process.env.ALLOW_INSECURE_LOCAL_RENDER !== "true") throw new Error("Ustaw RENDER_API_TOKEN albo jawnie ALLOW_INSECURE_LOCAL_RENDER=true dla lokalnych testów.");
   await acquireInstanceLock();
   await initializeJobs();

@@ -36,26 +36,31 @@ test("rejects manifests beyond the multi-part scene limit", async () => {
   const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Limit segmentów",format:"16:9",scenes})});
   assert.equal(response.status,400);
 });
-test("creates a persistent render job and allows retry after a failed attempt", async () => {
+test("validates queued manifests, renders a job, and serves its MP4", async () => {
   await waitReady();
-  const created = await fetch(base + "/api/render/jobs", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ topic:"Nieprawidłowe zadanie", format:"16:9", scenes:[] }) });
+  const invalid = await fetch(base + "/api/render/jobs", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ topic:"Nieprawidłowe zadanie", format:"16:9", scenes:[] }) });
+  assert.equal(invalid.status,400);
+  const created = await fetch(base + "/api/render/jobs", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ topic:"Test kolejki DARK VIDEO", format:"16:9", scenes:[{title:"Scena testowa",narration:"To jest krótki test kolejki renderowania.",seconds:2}] }) });
   assert.equal(created.status,202);
   const job = await created.json();
   assert.match(job.id,/^[0-9a-f-]{36}$/);
-  assert.ok(["queued","running"].includes(job.status));
+  assert.ok(["queued","running","completed"].includes(job.status));
   let current = job;
-  for (let i=0;i<40 && current.status!=="failed";i++) {
-    await new Promise(resolve=>setTimeout(resolve,100));
+  for (let i=0;i<180 && current.status!=="completed" && current.status!=="failed";i++) {
+    await new Promise(resolve=>setTimeout(resolve,500));
     const status = await fetch(base + "/api/render/jobs/" + job.id);
     current = await status.json();
   }
-  assert.equal(current.status,"failed");
-  assert.match(current.error,/scen/);
+  assert.equal(current.status,"completed",current.error||"Render job did not complete");
+  assert.equal(current.progress,100);
+  const download = await fetch(base + "/api/render/jobs/" + job.id + "/download");
+  assert.equal(download.status,200);
+  assert.match(download.headers.get("content-type"),/video\\/mp4/);
+  const bytes = Buffer.from(await download.arrayBuffer());
+  assert.ok(bytes.length>10000);
+  assert.equal(bytes.subarray(4,8).toString(),"ftyp");
   const retry = await fetch(base + "/api/render/jobs/" + job.id + "/retry",{method:"POST"});
-  assert.equal(retry.status,202);
-  const retried = await retry.json();
-  assert.ok(["queued","running"].includes(retried.status));
-  assert.ok(retried.attempts >= 1);
+  assert.equal(retry.status,409);
 });
 test("renders a playable multi-part MP4 with continuous narration and subtitle track", async () => {
   await waitReady();

@@ -130,7 +130,7 @@ test("queues an MP4 render, shows completion and downloads the finished file", a
   await page.route("https://render.example.test/api/render/jobs**", async route => {
     const request = route.request();
     if (request.method() === "OPTIONS") {
-      return route.fulfill({ status:204, headers:{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET, POST, OPTIONS","Access-Control-Allow-Headers":"Content-Type"} });
+      return route.fulfill({ status:204, headers:{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET, POST, OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization"} });
     }
     if (request.method() === "POST") {
       return route.fulfill({ status:202, headers:{"Access-Control-Allow-Origin":"*"}, json:{ id:jobId,status:"completed",progress:100,stage:"Film gotowy",attempts:1 } });
@@ -144,6 +144,7 @@ test("queues an MP4 render, shows completion and downloads the finished file", a
   }));
   await page.locator(".api-settings").nth(1).locator("summary").click();
   await page.locator("#renderUrl").fill("https://render.example.test");
+  await page.locator("#renderToken").fill("test-render-token");
   await page.locator("#topic").fill("Test renderowania MP4");
   await page.getByRole("button", { name:/STWÓRZ PLAN FILMU/ }).click();
   await page.getByRole("button", { name:"EKSPORT MP4 ↓" }).click();

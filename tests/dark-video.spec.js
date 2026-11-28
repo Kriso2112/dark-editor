@@ -141,6 +141,6 @@ test("queues an MP4 render, shows completion and downloads the finished file", a
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name:"POBIERZ MP4 ↓" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^dark-video-.*\\.mp4$/);
+  expect(download.suggestedFilename()).toMatch(/^dark-video-.*\.mp4$/);
   await expect(page.locator("#notice")).toContainText("Pobieranie gotowego filmu rozpoczęte");
 });

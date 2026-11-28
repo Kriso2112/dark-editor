@@ -138,6 +138,7 @@ test("restores a saved render job after the session token is re-entered", async 
   await expect(page.locator("#renderStage")).toContainText("Wklej ponownie token");
   await page.locator(".api-settings").nth(1).locator("summary").click();
   await page.locator("#renderToken").fill("test-render-token");
+  await page.locator("#renderToken").press("Tab");
   await expect(page.locator("#renderStage")).toHaveText("Film gotowy");
   await expect(page.locator("#renderPercent")).toHaveText("100%");
 });

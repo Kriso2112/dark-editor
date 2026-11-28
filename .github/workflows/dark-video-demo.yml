@@ -6,6 +6,7 @@ on:
       - feature/dark-video-first-film-mvp
       - feature/dark-video-multipart-render
       - feature/dark-video-multipart-render-clean
+      - feature/dark-video-secure-staging-hardening
   pull_request:
     branches:
       - work/dark-editor-1.0-stabilization

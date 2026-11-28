@@ -13,6 +13,8 @@ const MAX_TOTAL_NARRATION_CHARS = 120000;
 const FORMATS = { "16:9": [1280, 720], "9:16": [720, 1280], "1:1": [900, 900] };
 const JOBS_DIR = process.env.DARK_VIDEO_JOBS_DIR || path.join(process.cwd(), "data", "render-jobs");
 const MAX_QUEUED_JOBS = 25;
+const MAX_STORED_JOBS = 100;
+const JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const jobs = new Map();
 const jobQueue = [];
 let queueWorkerRunning = false;
@@ -148,6 +150,19 @@ async function saveJob(job) {
 function publicJob(job) {
   return { id: job.id, status: job.status, progress: job.progress, stage: job.stage, error: job.error || null, attempts: job.attempts, createdAt: job.createdAt, updatedAt: job.updatedAt, completedAt: job.completedAt || null };
 }
+async function pruneJobs() {
+  const terminal = [...jobs.values()]
+    .filter(job => job.status === "completed" || job.status === "failed")
+    .sort((a,b) => Date.parse(a.updatedAt || a.createdAt) - Date.parse(b.updatedAt || b.createdAt));
+  const now = Date.now();
+  for (const job of terminal) {
+    const age = now - Date.parse(job.updatedAt || job.createdAt);
+    if (age > JOB_RETENTION_MS || jobs.size > MAX_STORED_JOBS) {
+      jobs.delete(job.id);
+      await rm(path.join(JOBS_DIR, job.id), { recursive:true, force:true });
+    }
+  }
+}
 async function processQueue() {
   if (queueWorkerRunning) return;
   queueWorkerRunning = true;
@@ -183,10 +198,12 @@ async function initializeJobs() {
       } else jobs.set(id, job);
     } catch {}
   }
+  await pruneJobs();
   void processQueue();
 }
 async function createJob(input) {
   input = normalizeInput(input);
+  await pruneJobs();
   const waiting = jobQueue.length + [...jobs.values()].filter(job => job.status === "running").length;
   if (waiting >= MAX_QUEUED_JOBS) throw Object.assign(new Error("Kolejka jest pełna. Spróbuj ponownie za chwilę."), { status: 429 });
   const id = randomUUID(), now = new Date().toISOString();

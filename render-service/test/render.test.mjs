@@ -18,16 +18,27 @@ async function waitReady() {
 test("render service exposes health and media capabilities", async () => {
   await waitReady();
   const response=await fetch(base+"/health"), body=await response.json();
-  assert.equal(response.status,200); assert.equal(body.ok,true); assert.equal(body.tts,"espeak-ng Polish voice");
+  assert.equal(response.status,200); assert.equal(body.ok,true); assert.equal(body.tts,"espeak-ng Polish voice"); assert.equal(body.maxScenes,120); assert.equal(body.maxFilmSeconds,600); assert.equal(body.renderMode,"multi-part-concat");
 });
 test("rejects incomplete film manifests", async () => {
   await waitReady();
   const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Test",format:"16:9",scenes:[]})});
   assert.equal(response.status,400);
 });
-test("renders a playable MP4 with Polish narration and scene captions", async () => {
+test("rejects oversized narration in an individual segment", async () => {
   await waitReady();
-  const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Test DARK VIDEO",format:"16:9",scenes:[{title:"Pierwsza scena",narration:"To jest test polskiego lektora w pierwszym filmie DARK VIDEO.",seconds:5}]})});
+  const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Limit tekstu",format:"16:9",scenes:[{title:"Za długa scena",narration:"x".repeat(10001)}]})});
+  assert.equal(response.status,413);
+});
+test("rejects manifests beyond the multi-part scene limit", async () => {
+  await waitReady();
+  const scenes=Array.from({length:121},(_,i)=>({title:"Scena "+i,narration:"Tekst testowy."}));
+  const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Limit segmentów",format:"16:9",scenes})});
+  assert.equal(response.status,400);
+});
+test("renders a playable multi-part MP4 with continuous narration and subtitle track", async () => {
+  await waitReady();
+  const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Test DARK VIDEO",format:"16:9",scenes:[{title:"Pierwsza scena",narration:"To jest pierwsza część testu polskiego lektora.",seconds:5},{title:"Druga scena",narration:"A tutaj zaczyna się druga część, połączona w jeden film.",seconds:5}]})});
   assert.equal(response.status,200);
   assert.match(response.headers.get("content-type"),/video\/mp4/);
   const bytes=Buffer.from(await response.arrayBuffer());

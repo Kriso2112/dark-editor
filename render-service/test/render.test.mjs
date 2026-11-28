@@ -55,7 +55,7 @@ test("validates queued manifests, renders a job, and serves its MP4", async () =
   assert.equal(current.progress,100);
   const download = await fetch(base + "/api/render/jobs/" + job.id + "/download");
   assert.equal(download.status,200);
-  assert.match(download.headers.get("content-type"),/video\\/mp4/);
+  assert.match(download.headers.get("content-type"),/video\/mp4/);
   const bytes = Buffer.from(await download.arrayBuffer());
   assert.ok(bytes.length>10000);
   assert.equal(bytes.subarray(4,8).toString(),"ftyp");

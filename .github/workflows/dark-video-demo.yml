@@ -4,6 +4,7 @@ on:
     branches:
       - feature/dark-video-ai-foundation
       - feature/dark-video-first-film-mvp
+      - feature/dark-video-multipart-render
   pull_request:
     branches:
       - work/dark-editor-1.0-stabilization

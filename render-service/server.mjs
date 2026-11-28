@@ -334,7 +334,13 @@ const server = http.createServer(async (req, res) => {
   return send(res, 404, { error: "Nie znaleziono endpointu." });
 });
 (async () => {
-  if (process.env.NODE_ENV === "production" && Buffer.byteLength(renderToken, "utf8") < 32) throw new Error("W trybie production RENDER_API_TOKEN musi zawierać co najmniej 32 bajty losowego sekretu.");
+  if (process.env.NODE_ENV === "production") {
+    if (Buffer.byteLength(renderToken, "utf8") < 32) throw new Error("W trybie production RENDER_API_TOKEN musi zawierać co najmniej 32 bajty losowego sekretu.");
+    const configuredOrigin = process.env.ALLOWED_ORIGIN || "";
+    let parsedOrigin;
+    try { parsedOrigin = new URL(configuredOrigin); } catch { throw new Error("W trybie production ALLOWED_ORIGIN musi być poprawnym adresem HTTPS origin."); }
+    if (parsedOrigin.protocol !== "https:" || parsedOrigin.origin !== configuredOrigin || parsedOrigin.pathname !== "/" || parsedOrigin.search || parsedOrigin.hash) throw new Error("W trybie production ALLOWED_ORIGIN musi zawierać wyłącznie dokładny origin HTTPS bez ścieżki.");
+  }
   if (!renderToken && process.env.NODE_ENV !== "production" && process.env.ALLOW_INSECURE_LOCAL_RENDER !== "true") throw new Error("Ustaw RENDER_API_TOKEN albo jawnie ALLOW_INSECURE_LOCAL_RENDER=true dla lokalnych testów.");
   await acquireInstanceLock();
   await initializeJobs();

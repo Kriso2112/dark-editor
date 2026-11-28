@@ -133,15 +133,20 @@ test("queues an MP4 render, shows completion and downloads the finished file", a
       return route.fulfill({ status:204, headers:{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET, POST, OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization"} });
     }
     if (request.method() === "POST") {
+      expect(request.headers()["authorization"]).toBe("Bearer test-render-token");
       return route.fulfill({ status:202, headers:{"Access-Control-Allow-Origin":"*"}, json:{ id:jobId,status:"completed",progress:100,stage:"Film gotowy",attempts:1 } });
     }
+    expect(request.headers()["authorization"]).toBe("Bearer test-render-token");
     return route.fulfill({ status:200, headers:{"Access-Control-Allow-Origin":"*"}, json:{ id:jobId,status:"completed",progress:100,stage:"Film gotowy",attempts:1 } });
   });
-  await page.route("https://render.example.test/api/render/jobs/*/download", route => route.fulfill({
+  await page.route("https://render.example.test/api/render/jobs/*/download", route => {
+    expect(route.request().headers()["authorization"]).toBe("Bearer test-render-token");
+    return route.fulfill({
     status:200,
     headers:{"Access-Control-Allow-Origin":"*","Content-Type":"video/mp4"},
     body:mp4
-  }));
+  });
+  });
   await page.locator(".api-settings").nth(1).locator("summary").click();
   await page.locator("#renderUrl").fill("https://render.example.test");
   await page.locator("#renderToken").fill("test-render-token");

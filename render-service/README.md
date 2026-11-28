@@ -75,4 +75,4 @@ The PWA uses the queue API for long renders:
 
 The queue stores job metadata and final MP4 files in `DARK_VIDEO_JOBS_DIR`. The Docker image defaults this to `/data/render-jobs`; mount a persistent volume at `/data` as shown above. If the container is recreated without the volume, saved jobs and films will be lost. Interrupted queued/running jobs are re-queued after restart and rendered again from the beginning; completed scene segments are not resumed.
 
-The current queue is single-process/single-instance, permits up to 25 waiting jobs and does not yet include cancellation, multi-instance locking, authentication, rate limiting, storage quotas or automated retention cleanup. Do not expose it publicly until those controls are implemented and reviewed.
+The current queue is single-process/single-instance, permits up to 25 waiting jobs and retains at most 100 stored jobs; completed/failed jobs older than 7 days are pruned. It does not yet include cancellation, multi-instance locking, authentication, rate limiting or storage quotas. Do not expose it publicly until those controls are implemented and reviewed.

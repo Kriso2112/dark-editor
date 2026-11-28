@@ -6,7 +6,14 @@ import { open, unlink, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-const PORT = Number(process.env.PORT || 8080);
+function positiveIntegerEnv(name, fallback, minimum = 1) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < minimum) throw new Error(name + " musi być bezpieczną liczbą całkowitą nie mniejszą niż " + minimum + ".");
+  return value;
+}
+const PORT = positiveIntegerEnv("PORT", 8080);
 const MAX_BODY = 2 * 1024 * 1024;
 const MAX_SCENES = 120;
 const MAX_FILM_SECONDS = 10 * 60;
@@ -16,11 +23,12 @@ const JOBS_DIR = process.env.DARK_VIDEO_JOBS_DIR || path.join(process.cwd(), "da
 const MAX_QUEUED_JOBS = 25;
 const MAX_STORED_JOBS = 100;
 const JOB_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-const MAX_STORAGE_BYTES = Number(process.env.DARK_VIDEO_MAX_STORAGE_BYTES || 1024 * 1024 * 1024);
-const MAX_OUTPUT_BYTES = Number(process.env.DARK_VIDEO_MAX_OUTPUT_BYTES || 512 * 1024 * 1024);
+const MAX_STORAGE_BYTES = positiveIntegerEnv("DARK_VIDEO_MAX_STORAGE_BYTES", 1024 * 1024 * 1024, 1024 * 1024);
+const MAX_OUTPUT_BYTES = positiveIntegerEnv("DARK_VIDEO_MAX_OUTPUT_BYTES", 512 * 1024 * 1024, 1024 * 1024);
 const RATE_WINDOW_MS = 60 * 1000;
-const RATE_LIMIT = Number(process.env.DARK_VIDEO_RATE_LIMIT || 30);
-const CREATE_RATE_LIMIT = Number(process.env.DARK_VIDEO_CREATE_RATE_LIMIT || 5);
+const RATE_LIMIT = positiveIntegerEnv("DARK_VIDEO_RATE_LIMIT", 30);
+const CREATE_RATE_LIMIT = positiveIntegerEnv("DARK_VIDEO_CREATE_RATE_LIMIT", 5);
+const ENABLE_SYNC_RENDER = process.env.ENABLE_SYNC_RENDER === "true";
 const rateBuckets = new Map();
 const renderToken = process.env.RENDER_API_TOKEN || "";
 let instanceLockPath = "";
@@ -250,7 +258,7 @@ async function processQueue() {
         await writeFile(path.join(JOBS_DIR, id, "output.mp4"), bytes, { flag: "wx" });
         job.status = "completed"; job.progress = 100; job.stage = "Film gotowy"; job.completedAt = new Date().toISOString();
       } catch (error) {
-        job.status = "failed"; job.stage = "Renderowanie nie powiodło się"; job.error = error.message || "Nieznany błąd renderowania.";
+        job.status = "failed"; job.stage = "Renderowanie nie powiodło się"; job.error = "Render nie powiódł się. Spróbuj ponownie; szczegóły techniczne są dostępne wyłącznie w logach administratora.";
       }
       await saveJob(job);
     }
@@ -305,6 +313,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && !action) return send(res, 200, publicJob(job), "application/json; charset=utf-8", cors);
     if (req.method === "POST" && action === "retry") {
       if (job.status !== "failed") return send(res, 409, { error: "Można ponowić tylko nieudane zadanie." }, "application/json; charset=utf-8", cors);
+      const waiting = jobQueue.length + [...jobs.values()].filter(item => item.status === "running").length;
+      if (waiting >= MAX_QUEUED_JOBS) return send(res, 429, { error: "Kolejka jest pełna. Spróbuj ponownie za chwilę." }, "application/json; charset=utf-8", { ...cors, "Retry-After": "60" });
       job.status = "queued"; job.progress = 0; job.stage = "Ponowne renderowanie od początku"; job.error = null; job.completedAt = null;
       await saveJob(job); jobQueue.push(id); void processQueue(); return send(res, 202, publicJob(job), "application/json; charset=utf-8", cors);
     }
@@ -315,6 +325,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
   if (req.method === "POST" && url.pathname === "/api/render") {
+    if (process.env.NODE_ENV === "production" || !ENABLE_SYNC_RENDER) return send(res, 410, { error: "Synchroniczny endpoint renderowania jest wyłączony. Użyj kolejki /api/render/jobs." }, "application/json; charset=utf-8", cors);
     try {
       const input = await readJson(req), bytes = await render(input);
       return send(res, 200, bytes, "video/mp4", cors);
@@ -323,11 +334,11 @@ const server = http.createServer(async (req, res) => {
   return send(res, 404, { error: "Nie znaleziono endpointu." });
 });
 (async () => {
-  if (process.env.NODE_ENV === "production" && !renderToken) throw new Error("RENDER_API_TOKEN jest wymagany w trybie production.");
+  if (process.env.NODE_ENV === "production" && Buffer.byteLength(renderToken, "utf8") < 32) throw new Error("W trybie production RENDER_API_TOKEN musi zawierać co najmniej 32 bajty losowego sekretu.");
   if (!renderToken && process.env.NODE_ENV !== "production" && process.env.ALLOW_INSECURE_LOCAL_RENDER !== "true") throw new Error("Ustaw RENDER_API_TOKEN albo jawnie ALLOW_INSECURE_LOCAL_RENDER=true dla lokalnych testów.");
   await acquireInstanceLock();
   await initializeJobs();
-  server.listen(PORT, "0.0.0.0", () => process.stdout.write("DARK VIDEO render engine listening on " + PORT + "\n"));
+  server.listen(PORT, renderToken ? (process.env.HOST || "0.0.0.0") : "127.0.0.1", () => process.stdout.write("DARK VIDEO render engine listening on " + PORT + "\n"));
 })().catch(error => { process.stderr.write("Render queue initialization failed: " + error.message + "\n"); process.exitCode = 1; });
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => {
   server.close(async () => { await releaseInstanceLock(); process.exit(0); });

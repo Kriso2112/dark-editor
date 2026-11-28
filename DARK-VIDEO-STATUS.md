@@ -17,6 +17,7 @@ Pull request: https://github.com/Kriso2112/dark-editor/pull/12 (draft, targets w
 - Original generated scene-card graphics with the scene title and narration text burned into the video.
 - PWA MP4 export button that sends the edited scene manifest to the configured render service and downloads the returned MP4.
 - Render-service CORS allowlist, JSON size/scene validation and temporary file cleanup.
+- Multi-part limits: 120 scenes, 120,000 total narration characters, 10,000 characters per scene and 10 minutes measured from generated speech.
 - Node tests for render service and Playwright test for the MP4 download flow.
 - GitHub Actions workflow extended to run browser, Worker and renderer tests and build the renderer Docker image.
 
@@ -26,7 +27,7 @@ Pull request: https://github.com/Kriso2112/dark-editor/pull/12 (draft, targets w
 - The current Polish narrator is synthetic eSpeak NG, not a natural neural voice.
 - A proper music bed and a separate timed SRT/VTT subtitle track are not implemented yet.
 - Script generation is still template/demo based unless the separately configured paid AI provider is enabled through a future cost-consent interface.
-- Rendering is currently a synchronous HTTP request; there is no durable job queue, progress, retry/cancel, user authentication or storage retention system.
+- Rendering is currently a synchronous HTTP request; there is no durable job queue, progress, retry/cancel, user authentication or storage retention system. Long renders may be interrupted by client/proxy timeouts.
 - The renderer has not been deployed; the user must not enter a public endpoint until deployment and HTTPS/authentication/CORS setup are reviewed.
 - No paid AI service, API key or secret was configured.
 - The renderer's automated end-to-end MP4 test is being expanded to inspect video, audio and subtitle streams; its final CI result is not yet confirmed.
@@ -41,7 +42,7 @@ Pull request: https://github.com/Kriso2112/dark-editor/pull/12 (draft, targets w
 4. Add licensed/original music and volume ducking under narration.
 5. Add asynchronous render jobs, progress, retries, cancellation and safe storage.
 6. Add authentication, rate limiting, quotas and cleanup policies before public hosting.
-7. Test a complete 60–90 second film on a real Android phone, then longer 5–10 minute videos.
+7. Add asynchronous jobs/progress before relying on long renders over mobile networks; then test a complete 60–90 second film on a real Android phone, followed by 5–10 minute videos.
 8. Verify audio/video quality, aspect ratios, subtitle legibility, file size and recovery after refresh.
 
 ## Completion rule

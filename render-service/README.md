@@ -17,7 +17,7 @@ This is a genuine rendering proof, not yet the final visual production pipeline:
 ## Run with Docker
 
     docker build -t dark-video-render ./render-service
-    docker run --rm -p 8080:8080 -e ALLOWED_ORIGIN=https://your-pwa.example.com -v dark-video-data:/data dark-video-render
+    docker run --rm -p 8080:8080 -e ALLOWED_ORIGIN=https://your-pwa.example.com -e RENDER_API_TOKEN -v dark-video-data:/data dark-video-render
 
 Health: GET /health
 
@@ -46,7 +46,13 @@ The renderer creates a temporary MP4 for each scene, then joins those parts with
 
 - 2 MB JSON body limit; up to 120 scenes/segments; up to 10,000 characters per scene and 120,000 total narration characters; hard cap of 10 minutes measured from generated speech.
 - No arbitrary input file paths, shell commands, remote URLs, API keys or paid provider calls.
-- Run behind HTTPS and an authenticated gateway before public deployment. Add job queue, rate limits, storage quotas and cancellation before production.
+- Every `/api/*` endpoint requires `Authorization: Bearer <RENDER_API_TOKEN>`. The token is compared in constant time and must be supplied through the process environment/secret manager; never put it in a URL, source file, image, or repository.
+- `/health` is intentionally public and returns only minimal service status. CORS allows only the exact `ALLOWED_ORIGIN`; CORS is not authentication.
+- In-memory rate limits default to 30 API requests/minute and 5 new render jobs/minute per client IP. Configure with `DARK_VIDEO_RATE_LIMIT` and `DARK_VIDEO_CREATE_RATE_LIMIT`.
+- Storage defaults: 1 GiB total job directory (`DARK_VIDEO_MAX_STORAGE_BYTES`) and 512 MiB per final MP4 (`DARK_VIDEO_MAX_OUTPUT_BYTES`). Limits are checked before accepting jobs and before saving completed output.
+- A filesystem lock prevents two local renderer processes from sharing one jobs directory. Run exactly one container/replica with this volume; the lock is not a distributed multi-host coordination system.
+- Docker runs as the unprivileged `node` user and uses the persistent `/data` volume. Keep the volume private and back it with a disk quota at the hosting layer as an additional safeguard.
+- Use HTTPS, a strong random token (at least 32 random bytes), private network access where possible, and host-level CPU/memory/disk limits. Do not expose the renderer publicly until the hosting configuration and Android browser flow have been tested.
 - No paid AI provider is configured. No service is deployed by this change.
 
 
@@ -76,3 +82,26 @@ The PWA uses the queue API for long renders:
 The queue stores job metadata and final MP4 files in `DARK_VIDEO_JOBS_DIR`. The Docker image defaults this to `/data/render-jobs`; mount a persistent volume at `/data` as shown above. If the container is recreated without the volume, saved jobs and films will be lost. Interrupted queued/running jobs are re-queued after restart and rendered again from the beginning; completed scene segments are not resumed.
 
 Replace the example ALLOWED_ORIGIN value with the exact HTTPS origin serving the PWA. CORS is not authentication: the current queue is single-process/single-instance, permits up to 25 waiting jobs and retains at most 100 stored jobs; completed/failed jobs older than 7 days are pruned. It does not yet include cancellation, multi-instance locking, authentication, rate limiting or storage quotas. Do not expose it publicly until those controls are implemented and reviewed.
+
+
+## Secure test setup
+
+Set a strong random secret outside the repository before starting the container. For example, generate one with a password manager or a cryptographically secure secret generator, then export it as `RENDER_API_TOKEN` in the deployment environment. Do not reuse the example test token.
+
+Required production environment:
+- `NODE_ENV=production` (set in the Docker image)
+- `RENDER_API_TOKEN` (required; startup fails if absent)
+- `ALLOWED_ORIGIN` (exact HTTPS origin of the PWA, without a path)
+- Persistent volume mounted at `/data`
+
+Optional resource controls:
+- `DARK_VIDEO_MAX_STORAGE_BYTES` (default 1073741824)
+- `DARK_VIDEO_MAX_OUTPUT_BYTES` (default 536870912)
+- `DARK_VIDEO_RATE_LIMIT` (default 30 per minute)
+- `DARK_VIDEO_CREATE_RATE_LIMIT` (default 5 new jobs per minute)
+
+The PWA asks for the bearer token in the MP4 settings. It is held only in the current page's memory, not localStorage; the user must enter it again after closing/reloading the tab. All status, retry and download calls also send the token. Use HTTPS for every non-local connection.
+
+The health endpoint is public; all API endpoints require the bearer token. Rate limiting is process-local and intended as a first safety layer, not a substitute for a reverse proxy/WAF or account-based quotas. The filesystem lock supports one renderer process on one shared local filesystem only. Do not scale this service to multiple hosts/replicas.
+
+No staging or production service is deployed by this repository change. First run the automated CI tests, then deploy only to a private staging environment with a persistent volume, strong secret, TLS and strict origin allowlist. Perform the Android end-to-end check before considering any public release.

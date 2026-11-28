@@ -182,19 +182,21 @@ async function acquireInstanceLock() {
   instanceLockPath = path.join(JOBS_DIR, ".renderer.lock");
   try {
     const handle = await open(instanceLockPath, "wx", 0o600);
-    await handle.writeFile(JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
+    await handle.writeFile(JSON.stringify({ pid: process.pid, hostname: os.hostname(), startedAt: new Date().toISOString() }));
     await handle.close();
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
     let stale = false;
     try {
       const lock = JSON.parse(await readFile(instanceLockPath, "utf8"));
-      try { process.kill(Number(lock.pid), 0); } catch (probe) { if (probe.code === "ESRCH") stale = true; }
+      if (lock.hostname === os.hostname()) {
+        try { process.kill(Number(lock.pid), 0); } catch (probe) { if (probe.code === "ESRCH") stale = true; }
+      }
     } catch { stale = true; }
     if (!stale) throw new Error("Inny renderer już korzysta z tego katalogu danych. Uruchom tylko jedną instancję.");
     await unlink(instanceLockPath).catch(() => {});
     const handle = await open(instanceLockPath, "wx", 0o600);
-    await handle.writeFile(JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
+    await handle.writeFile(JSON.stringify({ pid: process.pid, hostname: os.hostname(), startedAt: new Date().toISOString() }));
     await handle.close();
   }
 }
@@ -320,12 +322,13 @@ const server = http.createServer(async (req, res) => {
   }
   return send(res, 404, { error: "Nie znaleziono endpointu." });
 });
-initializeJobs().then(async () => {
+(async () => {
   if (process.env.NODE_ENV === "production" && !renderToken) throw new Error("RENDER_API_TOKEN jest wymagany w trybie production.");
   if (!renderToken && process.env.NODE_ENV !== "production" && process.env.ALLOW_INSECURE_LOCAL_RENDER !== "true") throw new Error("Ustaw RENDER_API_TOKEN albo jawnie ALLOW_INSECURE_LOCAL_RENDER=true dla lokalnych testów.");
   await acquireInstanceLock();
+  await initializeJobs();
   server.listen(PORT, "0.0.0.0", () => process.stdout.write("DARK VIDEO render engine listening on " + PORT + "\n"));
-}).catch(error => { process.stderr.write("Render queue initialization failed: " + error.message + "\n"); process.exitCode = 1; });
+})().catch(error => { process.stderr.write("Render queue initialization failed: " + error.message + "\n"); process.exitCode = 1; });
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => {
   server.close(async () => { await releaseInstanceLock(); process.exit(0); });
 });

@@ -40,7 +40,7 @@ The response body is one MP4 file containing all scene segments. Segments are no
 
 ## Multi-part render behavior
 
-The renderer creates a temporary MP4 for each scene, then joins those parts with FFmpeg's concat demuxer. This is not ten separate calls to a paid AI video provider. One request carries the whole film manifest; the renderer synthesizes narration for each scene, measures the actual speech duration, and rejects the project if the resulting film would exceed 10 minutes. Ambient audio and subtitles are added on the global timeline after joining. For reliable long-form production, a future release still needs a durable asynchronous job queue, progress reporting, retries and cancellation.
+The renderer creates a temporary MP4 for each scene, then joins those parts with FFmpeg's concat demuxer. This is not ten separate calls to a paid AI video provider. One request carries the whole film manifest; the renderer synthesizes narration for each scene, measures the actual speech duration, and rejects the project if the resulting film would exceed 10 minutes. Ambient audio and subtitles are added on the global timeline after joining. Long-form rendering uses the filesystem-backed asynchronous queue below. Cancellation and resumable segment checkpoints are not implemented.
 
 ## Limits and safety
 

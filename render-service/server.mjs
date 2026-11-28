@@ -100,7 +100,8 @@ async function render(input) {
       await writeFile(svg, svgForScene(scene, i, scenes.length, width, height, input.topic), "utf8");
       await run("espeak-ng", ["-v", "pl", "-s", "148", "-w", wav, scene.narration], 30000);
       const duration = Number(await capture("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", wav]));
-      if (!Number.isFinite(duration) || duration <= 0) throw new Error("Nie udało się odczytać długości narracji sceny " + (i+1) + ".");
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("Nie udało się odczytać długości narracji segmentu " + (i+1) + ".");
+      if (timeline + duration > MAX_FILM_SECONDS) throw Object.assign(new Error("Film przekracza limit 10 minut. Podziel go na krótszy projekt."), { status: 413 });
       subtitleEntries.push(String(i+1) + "\n" + srtTime(timeline) + " --> " + srtTime(timeline + duration) + "\n" + subtitleLines(scene.narration) + "\n");
       timeline += duration;
       await run("ffmpeg", ["-y", "-loop", "1", "-framerate", "25", "-i", svg, "-i", wav, "-vf", "zoompan=z=min(zoom+0.0005\\,1.08):d=1:s=" + width + "x" + height + ":fps=25,format=yuv420p", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", mp4], 90000);

@@ -7,7 +7,8 @@ import path from "node:path";
 
 const port = 8097;
 const jobsDir = await mkdtemp(path.join(os.tmpdir(),"dark-video-test-jobs-"));
-const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port), DARK_VIDEO_JOBS_DIR: jobsDir }, stdio: "ignore" });
+const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port), DARK_VIDEO_JOBS_DIR: jobsDir, RENDER_API_TOKEN: "test-render-token", DARK_VIDEO_RATE_LIMIT: "100", DARK_VIDEO_CREATE_RATE_LIMIT: "100" }, stdio: "ignore" });
+const authHeaders = { Authorization: "Bearer test-render-token" };
 const base = "http://127.0.0.1:" + port;
 async function waitReady() {
   for (let i=0;i<60;i++) {
@@ -19,11 +20,27 @@ async function waitReady() {
 test("render service exposes health and media capabilities", async () => {
   await waitReady();
   const response=await fetch(base+"/health"), body=await response.json();
-  assert.equal(response.status,200); assert.equal(body.ok,true); assert.equal(body.tts,"espeak-ng Polish voice"); assert.equal(body.maxScenes,120); assert.equal(body.maxFilmSeconds,600); assert.equal(body.renderMode,"multi-part-concat");
+  assert.equal(response.status,200); assert.equal(body.ok,true); assert.equal(body.authenticationRequired,true); assert.deepEqual(body.formats,["16:9","9:16","1:1"]);
+});
+
+test("protects render API with bearer authentication", async () => {
+  await waitReady();
+  const denied = await fetch(base + "/api/render/jobs/" + "00000000-0000-4000-8000-000000000000");
+  assert.equal(denied.status,401);
+  const wrong = await fetch(base + "/api/render/jobs/" + "00000000-0000-4000-8000-000000000000",{headers:{Authorization:"Bearer wrong-token"}});
+  assert.equal(wrong.status,401);
+  const allowed = await fetch(base + "/api/render/jobs/" + "00000000-0000-4000-8000-000000000000",{headers:authHeaders});
+  assert.equal(allowed.status,404);
+});
+test("allows Authorization in the CORS preflight", async () => {
+  await waitReady();
+  const response = await fetch(base + "/api/render/jobs",{method:"OPTIONS",headers:{Origin:"https://dark-video.example.test","Access-Control-Request-Method":"POST","Access-Control-Request-Headers":"authorization,content-type"}});
+  assert.equal(response.status,204);
+  assert.match(response.headers.get("access-control-allow-headers"),/Authorization/i);
 });
 test("rejects incomplete film manifests", async () => {
   await waitReady();
-  const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Test",format:"16:9",scenes:[]})});
+  const response=await fetch(base+"/api/render",{method:"POST",headers:{...authHeaders,"Content-Type":"application/json"},body:JSON.stringify({topic:"Test",format:"16:9",scenes:[]})});
   assert.equal(response.status,400);
 });
 test("rejects oversized narration in an individual segment", async () => {
@@ -49,18 +66,18 @@ test("validates queued manifests, renders a job, and serves its MP4", async () =
   let current = job;
   for (let i=0;i<180 && current.status!=="completed" && current.status!=="failed";i++) {
     await new Promise(resolve=>setTimeout(resolve,500));
-    const status = await fetch(base + "/api/render/jobs/" + job.id);
+    const status = await fetch(base + "/api/render/jobs/" + job.id,{headers:authHeaders});
     current = await status.json();
   }
   assert.equal(current.status,"completed",current.error||"Render job did not complete");
   assert.equal(current.progress,100);
-  const download = await fetch(base + "/api/render/jobs/" + job.id + "/download");
+  const download = await fetch(base + "/api/render/jobs/" + job.id + "/download",{headers:authHeaders});
   assert.equal(download.status,200);
   assert.match(download.headers.get("content-type"),/video\/mp4/);
   const bytes = Buffer.from(await download.arrayBuffer());
   assert.ok(bytes.length>10000);
   assert.equal(bytes.subarray(4,8).toString(),"ftyp");
-  const retry = await fetch(base + "/api/render/jobs/" + job.id + "/retry",{method:"POST"});
+  const retry = await fetch(base + "/api/render/jobs/" + job.id + "/retry",{method:"POST",headers:authHeaders});
   assert.equal(retry.status,409);
 });
 test("renders a playable multi-part MP4 with continuous narration and subtitle track", async () => {

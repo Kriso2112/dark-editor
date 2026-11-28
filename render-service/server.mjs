@@ -87,18 +87,24 @@ async function readJson(req) {
   for await (const chunk of req) { size += chunk.length; if (size > MAX_BODY) throw Object.assign(new Error("Żądanie przekracza 2 MB."), { status: 413 }); chunks.push(chunk); }
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw Object.assign(new Error("Nieprawidłowy JSON."), { status: 400 }); }
 }
-async function render(input, onProgress = async () => {}) {
+function normalizeInput(input) {
   if (!input || typeof input.topic !== "string" || input.topic.trim().length < 3 || input.topic.length > 240) throw Object.assign(new Error("Temat musi mieć od 3 do 240 znaków."), { status: 400 });
   if (!Array.isArray(input.scenes) || input.scenes.length < 1 || input.scenes.length > MAX_SCENES) throw Object.assign(new Error("Film musi zawierać od 1 do " + MAX_SCENES + " scen/segmentów."), { status: 400 });
   if (input.scenes.some(scene => !scene || typeof scene !== "object" || Array.isArray(scene))) throw Object.assign(new Error("Każdy segment musi być prawidłowym obiektem sceny."), { status: 400 });
   if (input.scenes.some(scene => String(scene.narration || "").length > 10000)) throw Object.assign(new Error("Tekst pojedynczej sceny przekracza limit 10 000 znaków."), { status: 413 });
   const totalNarrationChars = input.scenes.reduce((sum, scene) => sum + String(scene.narration || "").length, 0);
   if (totalNarrationChars > MAX_TOTAL_NARRATION_CHARS) throw Object.assign(new Error("Łączny tekst lektora przekracza limit 120 000 znaków."), { status: 413 });
-  const dimensions = FORMATS[input.format || "16:9"];
-  if (!dimensions) throw Object.assign(new Error("Nieobsługiwany format obrazu."), { status: 400 });
-  const [width, height] = dimensions;
+  const format = input.format || "16:9";
+  if (!FORMATS[format]) throw Object.assign(new Error("Nieobsługiwany format obrazu."), { status: 400 });
   const scenes = input.scenes.map(s => ({ title: String(s.title || "").slice(0,160), narration: String(s.narration || "").slice(0,10000), visual: String(s.visual || "").slice(0,500), seconds: Math.max(1, Math.min(600, Number(s.seconds) || 5)) }));
   if (scenes.some(s => !s.narration.trim())) throw Object.assign(new Error("Każda scena musi mieć tekst narracji."), { status: 400 });
+  return { topic: input.topic.trim(), format, scenes };
+}
+async function render(input, onProgress = async () => {}) {
+  input = normalizeInput(input);
+  const dimensions = FORMATS[input.format];
+  const [width, height] = dimensions;
+  const scenes = input.scenes;
   const dir = await mkdtemp(path.join(os.tmpdir(), "dark-video-"));
   try {
     const segments = [], subtitleEntries = [];
@@ -180,6 +186,7 @@ async function initializeJobs() {
   void processQueue();
 }
 async function createJob(input) {
+  input = normalizeInput(input);
   const waiting = jobQueue.length + [...jobs.values()].filter(job => job.status === "running").length;
   if (waiting >= MAX_QUEUED_JOBS) throw Object.assign(new Error("Kolejka jest pełna. Spróbuj ponownie za chwilę."), { status: 429 });
   const id = randomUUID(), now = new Date().toISOString();

@@ -7,7 +7,7 @@ import path from "node:path";
 
 const port = 8097;
 const jobsDir = await mkdtemp(path.join(os.tmpdir(),"dark-video-test-jobs-"));
-const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port), DARK_VIDEO_JOBS_DIR: jobsDir, RENDER_API_TOKEN: "test-render-token", DARK_VIDEO_RATE_LIMIT: "100", DARK_VIDEO_CREATE_RATE_LIMIT: "100" }, stdio: "ignore" });
+const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port), DARK_VIDEO_JOBS_DIR: jobsDir, RENDER_API_TOKEN: "test-render-token", DARK_VIDEO_RATE_LIMIT: "100", DARK_VIDEO_CREATE_RATE_LIMIT: "100", ALLOWED_ORIGIN: "https://dark-video.example.test" }, stdio: "ignore" });
 const authHeaders = { Authorization: "Bearer test-render-token" };
 async function apiFetch(url, options = {}) { return fetch(url, { ...options, headers: { ...authHeaders, ...(options.headers || {}) } }); }
 const base = "http://127.0.0.1:" + port;

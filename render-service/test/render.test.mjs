@@ -25,6 +25,11 @@ test("rejects incomplete film manifests", async () => {
   const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Test",format:"16:9",scenes:[]})});
   assert.equal(response.status,400);
 });
+test("rejects oversized narration in an individual segment", async () => {
+  await waitReady();
+  const response=await fetch(base+"/api/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({topic:"Limit tekstu",format:"16:9",scenes:[{title:"Za długa scena",narration:"x".repeat(10001)}]})});
+  assert.equal(response.status,413);
+});
 test("rejects manifests beyond the multi-part scene limit", async () => {
   await waitReady();
   const scenes=Array.from({length:121},(_,i)=>({title:"Scena "+i,narration:"Tekst testowy."}));

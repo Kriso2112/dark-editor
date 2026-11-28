@@ -113,24 +113,34 @@ test("allows editing scene title and duration", async ({ page }) => {
   await expect(first.locator('input[data-field="seconds"]')).toHaveValue("45");
 });
 
-test("exports an MP4 through the configured render service", async ({ page }) => {
-  await page.route("https://render.example.test/api/render", route => {
-    if (route.request().method() === "OPTIONS") {
-      return route.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" } });
+test("queues an MP4 render, shows completion and downloads the finished file", async ({ page }) => {
+  const jobId = "123e4567-e89b-42d3-a456-426614174000";
+  const mp4 = Buffer.concat([Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,2,0,105,115,111,109,109,112,52,50]), Buffer.alloc(4096)]);
+  await page.route("https://render.example.test/api/render/jobs**", async route => {
+    const request = route.request();
+    if (request.method() === "OPTIONS") {
+      return route.fulfill({ status:204, headers:{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET, POST, OPTIONS","Access-Control-Allow-Headers":"Content-Type"} });
     }
-    return route.fulfill({
-      status: 200,
-      headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "video/mp4" },
-      body: Buffer.concat([Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,2,0,105,115,111,109,109,112,52,50]), Buffer.alloc(4096)])
-    });
+    if (request.method() === "POST") {
+      return route.fulfill({ status:202, headers:{"Access-Control-Allow-Origin":"*"}, json:{ id:jobId,status:"completed",progress:100,stage:"Film gotowy",attempts:1 } });
+    }
+    return route.fulfill({ status:200, headers:{"Access-Control-Allow-Origin":"*"}, json:{ id:jobId,status:"completed",progress:100,stage:"Film gotowy",attempts:1 } });
   });
+  await page.route("https://render.example.test/api/render/jobs/*/download", route => route.fulfill({
+    status:200,
+    headers:{"Access-Control-Allow-Origin":"*","Content-Type":"video/mp4"},
+    body:mp4
+  }));
   await page.locator(".api-settings").nth(1).locator("summary").click();
   await page.locator("#renderUrl").fill("https://render.example.test");
   await page.locator("#topic").fill("Test renderowania MP4");
-  await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
+  await page.getByRole("button", { name:/STWÓRZ PLAN FILMU/ }).click();
+  await page.getByRole("button", { name:"EKSPORT MP4 ↓" }).click();
+  await expect(page.locator("#renderPercent")).toHaveText("100%");
+  await expect(page.locator("#downloadRender")).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "EKSPORT MP4 ↓" }).click();
+  await page.getByRole("button", { name:"POBIERZ MP4 ↓" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toMatch(/^dark-video-.*\.mp4$/);
-  await expect(page.locator("#notice")).toContainText("Serwer przygotował plik MP4");
+  expect(download.suggestedFilename()).toMatch(/^dark-video-.*\\.mp4$/);
+  await expect(page.locator("#notice")).toContainText("Pobieranie gotowego filmu rozpoczęte");
 });

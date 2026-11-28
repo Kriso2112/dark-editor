@@ -39,12 +39,12 @@ test("rejects an untrusted browser origin", async () => {
   assert.equal(response.status,403);
 });
 test("production refuses a short renderer secret", async () => {
-  const result = spawnSync(process.execPath, ["server.mjs"], { env:{ ...process.env, NODE_ENV:"production", PORT:"0", DARK_VIDEO_JOBS_DIR:path.join(jobsDir,"weak-secret"), RENDER_API_TOKEN:"too-short", ALLOWED_ORIGIN:"https://dark-video.example.test" }, encoding:"utf8", timeout:5000 });
+  const result = spawnSync(process.execPath, ["server.mjs"], { env:{ ...process.env, NODE_ENV:"production", PORT:"8098", DARK_VIDEO_JOBS_DIR:path.join(jobsDir,"weak-secret"), RENDER_API_TOKEN:"too-short", ALLOWED_ORIGIN:"https://dark-video.example.test" }, encoding:"utf8", timeout:5000 });
   assert.notEqual(result.status,0);
   assert.match(result.stderr,/co najmniej 32 bajty/);
 });
 test("rejects invalid resource-limit configuration", async () => {
-  const result = spawnSync(process.execPath, ["server.mjs"], { env:{ ...process.env, NODE_ENV:"test", PORT:"0", DARK_VIDEO_JOBS_DIR:path.join(jobsDir,"bad-limit"), RENDER_API_TOKEN:"test-token", DARK_VIDEO_MAX_STORAGE_BYTES:"NaN" }, encoding:"utf8", timeout:5000 });
+  const result = spawnSync(process.execPath, ["server.mjs"], { env:{ ...process.env, NODE_ENV:"test", PORT:"8099", DARK_VIDEO_JOBS_DIR:path.join(jobsDir,"bad-limit"), RENDER_API_TOKEN:"test-token", DARK_VIDEO_MAX_STORAGE_BYTES:"NaN" }, encoding:"utf8", timeout:5000 });
   assert.notEqual(result.status,0);
   assert.match(result.stderr,/DARK_VIDEO_MAX_STORAGE_BYTES/);
 });

@@ -4,10 +4,14 @@ on:
     branches:
       - feature/dark-video-ai-foundation
       - feature/dark-video-first-film-mvp
+      - feature/dark-video-multipart-render
+      - feature/dark-video-multipart-render-clean
+      - feature/dark-video-secure-staging-hardening
   pull_request:
     branches:
       - work/dark-editor-1.0-stabilization
       - feature/dark-video-first-film-mvp
+      - feature/dark-video-multipart-render-clean
       - main
 jobs:
   browser-tests:
@@ -23,5 +27,7 @@ jobs:
       - run: npx playwright test tests/dark-video.spec.js
       - run: npm run test:dark-ai
       - run: npm run test:render
+      - name: Validate private staging Compose configuration
+        run: docker compose -f render-service/compose.staging.yml config --quiet
       - name: Build isolated render container
         run: docker build -t dark-video-render ./render-service

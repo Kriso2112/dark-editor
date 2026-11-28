@@ -43,6 +43,32 @@ test("production refuses a short renderer secret", async () => {
   assert.notEqual(result.status,0);
   assert.match(result.stderr,/co najmniej 32 bajty/);
 });
+test("prevents a second renderer from opening the same jobs directory", async () => {
+  const result = spawnSync(process.execPath, ["server.mjs"], { env:{ ...process.env, NODE_ENV:"test", PORT:"8100", DARK_VIDEO_JOBS_DIR:jobsDir, RENDER_API_TOKEN:"test-render-token" }, encoding:"utf8", timeout:5000 });
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/Inny renderer już korzysta/);
+});
+test("production disables the legacy synchronous render endpoint", async () => {
+  const productionPort = 8101;
+  const productionDir = path.join(jobsDir,"production-sync");
+  const secret = "a".repeat(64);
+  const child = spawn(process.execPath, ["server.mjs"], { env:{ ...process.env, NODE_ENV:"production", PORT:String(productionPort), DARK_VIDEO_JOBS_DIR:productionDir, RENDER_API_TOKEN:secret, ALLOWED_ORIGIN:"https://dark-video.example.test" }, stdio:"ignore" });
+  const productionBase = "http://127.0.0.1:" + productionPort;
+  try {
+    let ready = false;
+    for (let i=0;i<60;i++) {
+      try { if ((await fetch(productionBase+"/health")).ok) { ready=true; break; } } catch {}
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    assert.equal(ready,true,"production renderer should start with a strong token");
+    const response = await fetch(productionBase+"/api/render",{method:"POST",headers:{Authorization:"Bearer "+secret,"Content-Type":"application/json"},body:"{}"});
+    assert.equal(response.status,410);
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise(resolve=>child.once("exit",resolve));
+    await rm(productionDir,{recursive:true,force:true});
+  }
+});
 test("rejects invalid resource-limit configuration", async () => {
   const result = spawnSync(process.execPath, ["server.mjs"], { env:{ ...process.env, NODE_ENV:"test", PORT:"8099", DARK_VIDEO_JOBS_DIR:path.join(jobsDir,"bad-limit"), RENDER_API_TOKEN:"test-token", DARK_VIDEO_MAX_STORAGE_BYTES:"NaN" }, encoding:"utf8", timeout:5000 });
   assert.notEqual(result.status,0);

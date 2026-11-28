@@ -8,7 +8,8 @@ services:
     restart: unless-stopped
     init: true
     env_file:
-      - .env.staging
+      - path: .env.staging
+        required: false
     ports:
       - "127.0.0.1:8080:8080"
     volumes:

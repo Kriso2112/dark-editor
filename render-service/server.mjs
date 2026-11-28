@@ -84,7 +84,9 @@ async function readJson(req) {
 async function render(input) {
   if (!input || typeof input.topic !== "string" || input.topic.trim().length < 3 || input.topic.length > 240) throw Object.assign(new Error("Temat musi mieć od 3 do 240 znaków."), { status: 400 });
   if (!Array.isArray(input.scenes) || input.scenes.length < 1 || input.scenes.length > MAX_SCENES) throw Object.assign(new Error("Film musi zawierać od 1 do " + MAX_SCENES + " scen/segmentów."), { status: 400 });
-  const totalNarrationChars = input.scenes.reduce((sum, scene) => sum + String(scene?.narration || "").length, 0);
+  if (input.scenes.some(scene => !scene || typeof scene !== "object" || Array.isArray(scene))) throw Object.assign(new Error("Każdy segment musi być prawidłowym obiektem sceny."), { status: 400 });
+  if (input.scenes.some(scene => String(scene.narration || "").length > 10000)) throw Object.assign(new Error("Tekst pojedynczej sceny przekracza limit 10 000 znaków."), { status: 413 });
+  const totalNarrationChars = input.scenes.reduce((sum, scene) => sum + String(scene.narration || "").length, 0);
   if (totalNarrationChars > MAX_TOTAL_NARRATION_CHARS) throw Object.assign(new Error("Łączny tekst lektora przekracza limit 120 000 znaków."), { status: 413 });
   const dimensions = FORMATS[input.format || "16:9"];
   if (!dimensions) throw Object.assign(new Error("Nieobsługiwany format obrazu."), { status: 400 });

@@ -35,6 +35,17 @@ test("saves and restores the current project in browser storage", async ({ page 
   await expect(page.locator("#script")).toHaveValue("Scenariusz testowy do zapisania.");
 });
 
+test("automatically restores scene and script edits after refresh", async ({ page }) => {
+  await page.locator("#topic").fill("Automatyczny zapis projektu");
+  await page.getByRole("button", { name:/STWÓRZ PLAN FILMU/ }).click();
+  const first = page.locator("#scenes .scene-card").first();
+  await first.locator('[data-field="narration"]').fill("Zmieniona narracja zapisana automatycznie.");
+  await page.locator("#script").fill("Zmieniony scenariusz zapisany automatycznie.");
+  await page.reload();
+  await expect(page.locator("#workspace")).toBeVisible();
+  await expect(page.locator("#script")).toHaveValue("Zmieniony scenariusz zapisany automatycznie.");
+  await expect(page.locator("#scenes .scene-card").first().locator('[data-field="narration"]')).toHaveValue("Zmieniona narracja zapisana automatycznie.");
+});
 test("supports a narrow mobile viewport without hiding the main action", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await expect(page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ })).toBeVisible();
@@ -72,6 +83,7 @@ test("updates the word count correctly for ordinary text", async ({ page }) => {
 
 test("checks a configured DARK AI API in mock mode", async ({ page }) => {
   await page.route("https://api.example.test/api/health", route => route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: { ok: true, mode: "mock", paidProviderEnabled: false } }));
+  await page.locator(".api-settings").nth(0).locator("summary").click();
   await page.locator("#apiUrl").fill("https://api.example.test");
   await page.getByRole("button", { name: "SPRAWDŹ POŁĄCZENIE" }).click();
   await expect(page.locator("#notice")).toContainText("tryb testowy bez opłat");
@@ -84,6 +96,7 @@ test("uses the DARK AI mock API and refuses paid provider mode", async ({ page }
     if (request.url().endsWith("/api/health")) return route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: { ok: true, mode: "mock" } });
     return route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: { mode: "mock", project: { version: 1, title: "Test API", duration: 60, format: "16:9", mode: "auto", script: "Scenariusz z API.", scenes: [{ id: "api-1", title: "Otwarcie", narration: "Tekst sceny", visual: "Kadr testowy", seconds: 60, approved: false }] } } });
   });
+  await page.locator(".api-settings").nth(0).locator("summary").click();
   await page.locator("#apiUrl").fill("https://api.example.test");
   await page.locator("#topic").fill("Test API");
   await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
@@ -93,6 +106,7 @@ test("uses the DARK AI mock API and refuses paid provider mode", async ({ page }
 
 test("blocks a paid DARK AI provider until the app has a consent flow", async ({ page }) => {
   await page.route("https://api.example.test/api/health", route => route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: { ok: true, mode: "provider-ready" } }));
+  await page.locator(".api-settings").nth(0).locator("summary").click();
   await page.locator("#apiUrl").fill("https://api.example.test");
   await page.locator("#topic").fill("Test płatnego AI");
   await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
@@ -110,24 +124,40 @@ test("allows editing scene title and duration", async ({ page }) => {
   await expect(first.locator('input[data-field="seconds"]')).toHaveValue("45");
 });
 
-
-test("exports an MP4 through the configured render service", async ({ page }) => {
-  await page.route("https://render.example.test/api/render", route => {
-    if (route.request().method() === "OPTIONS") {
-      return route.fulfill({ status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" } });
+test("queues an MP4 render, shows completion and downloads the finished file", async ({ page }) => {
+  const jobId = "123e4567-e89b-42d3-a456-426614174000";
+  const mp4 = Buffer.concat([Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,2,0,105,115,111,109,109,112,52,50]), Buffer.alloc(4096)]);
+  await page.route("https://render.example.test/api/render/jobs**", async route => {
+    const request = route.request();
+    if (request.method() === "OPTIONS") {
+      return route.fulfill({ status:204, headers:{"Access-Control-Allow-Origin":"*","Access-Control-Allow-Methods":"GET, POST, OPTIONS","Access-Control-Allow-Headers":"Content-Type, Authorization"} });
     }
-    return route.fulfill({
-      status: 200,
-      headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "video/mp4" },
-      body: Buffer.concat([Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,2,0,105,115,111,109,109,112,52,50]), Buffer.alloc(4096)])
-    });
+    if (request.method() === "POST") {
+      expect(request.headers()["authorization"]).toBe("Bearer test-render-token");
+      return route.fulfill({ status:202, headers:{"Access-Control-Allow-Origin":"*"}, json:{ id:jobId,status:"completed",progress:100,stage:"Film gotowy",attempts:1 } });
+    }
+    expect(request.headers()["authorization"]).toBe("Bearer test-render-token");
+    return route.fulfill({ status:200, headers:{"Access-Control-Allow-Origin":"*"}, json:{ id:jobId,status:"completed",progress:100,stage:"Film gotowy",attempts:1 } });
   });
+  await page.route("https://render.example.test/api/render/jobs/*/download", route => {
+    expect(route.request().headers()["authorization"]).toBe("Bearer test-render-token");
+    return route.fulfill({
+    status:200,
+    headers:{"Access-Control-Allow-Origin":"*","Content-Type":"video/mp4"},
+    body:mp4
+  });
+  });
+  await page.locator(".api-settings").nth(1).locator("summary").click();
   await page.locator("#renderUrl").fill("https://render.example.test");
+  await page.locator("#renderToken").fill("test-render-token");
   await page.locator("#topic").fill("Test renderowania MP4");
-  await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
+  await page.getByRole("button", { name:/STWÓRZ PLAN FILMU/ }).click();
+  await page.getByRole("button", { name:"EKSPORT MP4 ↓" }).click();
+  await expect(page.locator("#renderPercent")).toHaveText("100%");
+  await expect(page.locator("#downloadRender")).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "EKSPORT MP4 ↓" }).click();
+  await page.getByRole("button", { name:"POBIERZ MP4 ↓" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^dark-video-.*\.mp4$/);
-  await expect(page.locator("#notice")).toContainText("Serwer przygotował plik MP4");
+  await expect(page.locator("#notice")).toContainText("Pobieranie gotowego filmu rozpoczęte");
 });

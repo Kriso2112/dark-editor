@@ -6,7 +6,8 @@ import os from "node:os";
 import path from "node:path";
 
 const port = 8097;
-const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port) }, stdio: "ignore" });
+const jobsDir = await mkdtemp(path.join(os.tmpdir(),"dark-video-test-jobs-"));
+const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port), DARK_VIDEO_JOBS_DIR: jobsDir }, stdio: "ignore" });
 const base = "http://127.0.0.1:" + port;
 async function waitReady() {
   for (let i=0;i<60;i++) {
@@ -81,4 +82,4 @@ test("renders a playable multi-part MP4 with continuous narration and subtitle t
     assert.ok(types.includes("subtitle"),"MP4 must contain a timed subtitle track");
   } finally { await rm(dir,{recursive:true,force:true}); }
 });
-after(()=>server.kill("SIGTERM"));
+after(async()=>{server.kill("SIGTERM");await new Promise(resolve=>server.once("exit",resolve));await rm(jobsDir,{recursive:true,force:true});});

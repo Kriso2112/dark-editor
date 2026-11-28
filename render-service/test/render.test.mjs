@@ -7,7 +7,7 @@ import path from "node:path";
 
 const port = 8097;
 const jobsDir = await mkdtemp(path.join(os.tmpdir(),"dark-video-test-jobs-"));
-const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port), DARK_VIDEO_JOBS_DIR: jobsDir, RENDER_API_TOKEN: "test-render-token", DARK_VIDEO_RATE_LIMIT: "100", DARK_VIDEO_CREATE_RATE_LIMIT: "100", ALLOWED_ORIGIN: "https://dark-video.example.test" }, stdio: "ignore" });
+const server = spawn(process.execPath, ["server.mjs"], { env: { ...process.env, PORT: String(port), DARK_VIDEO_JOBS_DIR: jobsDir, RENDER_API_TOKEN: "test-render-token", ENABLE_SYNC_RENDER: "true", DARK_VIDEO_RATE_LIMIT: "100", DARK_VIDEO_CREATE_RATE_LIMIT: "100", ALLOWED_ORIGIN: "https://dark-video.example.test" }, stdio: "ignore" });
 const authHeaders = { Authorization: "Bearer test-render-token" };
 async function apiFetch(url, options = {}) { return fetch(url, { ...options, headers: { ...authHeaders, ...(options.headers || {}) } }); }
 const base = "http://127.0.0.1:" + port;
@@ -32,6 +32,21 @@ test("protects render API with bearer authentication", async () => {
   assert.equal(wrong.status,401);
   const allowed = await fetch(base + "/api/render/jobs/" + "00000000-0000-4000-8000-000000000000",{headers:authHeaders});
   assert.equal(allowed.status,404);
+});
+test("rejects an untrusted browser origin", async () => {
+  await waitReady();
+  const response = await fetch(base + "/api/render/jobs", { method:"OPTIONS", headers:{ Origin:"https://attacker.example", "Access-Control-Request-Method":"POST", "Access-Control-Request-Headers":"authorization" } });
+  assert.equal(response.status,403);
+});
+test("production refuses a short renderer secret", async () => {
+  const result = spawnSync(process.execPath, ["server.mjs"], { env:{ ...process.env, NODE_ENV:"production", PORT:"0", DARK_VIDEO_JOBS_DIR:path.join(jobsDir,"weak-secret"), RENDER_API_TOKEN:"too-short", ALLOWED_ORIGIN:"https://dark-video.example.test" }, encoding:"utf8", timeout:5000 });
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/co najmniej 32 bajty/);
+});
+test("rejects invalid resource-limit configuration", async () => {
+  const result = spawnSync(process.execPath, ["server.mjs"], { env:{ ...process.env, NODE_ENV:"test", PORT:"0", DARK_VIDEO_JOBS_DIR:path.join(jobsDir,"bad-limit"), RENDER_API_TOKEN:"test-token", DARK_VIDEO_MAX_STORAGE_BYTES:"NaN" }, encoding:"utf8", timeout:5000 });
+  assert.notEqual(result.status,0);
+  assert.match(result.stderr,/DARK_VIDEO_MAX_STORAGE_BYTES/);
 });
 test("allows Authorization in the CORS preflight", async () => {
   await waitReady();

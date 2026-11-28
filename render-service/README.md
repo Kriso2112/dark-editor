@@ -10,14 +10,14 @@ A separate container service for real MP4 rendering. It is intentionally not dep
 - Renders H.264/AAC MP4 in 16:9, 9:16 or 1:1.
 - Adds a subtle slow zoom to scene cards, mixes a quiet original ambient tone under narration, and embeds a synchronized Polish subtitle track.
 - Verifies the MP4 container signature before returning it.
-- Keeps one global narration timeline, mixes one continuous ambient bed after concatenation, and writes one continuous Polish subtitle track. Uses temporary job folders and removes them after rendering.
+- Keeps one global narration timeline, mixes one continuous ambient bed after concatenation, and writes one continuous Polish subtitle track. Temporary scene-render files are removed after rendering; queued job metadata and completed MP4 files are retained in the configured data directory.
 
 This is a genuine rendering proof, not yet the final visual production pipeline: scene cards are not AI-generated footage, the voice is a local synthetic voice, and a dedicated music/subtitle-timing pipeline is still outstanding.
 
 ## Run with Docker
 
     docker build -t dark-video-render ./render-service
-    docker run --rm -p 8080:8080 dark-video-render
+    docker run --rm -p 8080:8080 -v dark-video-data:/data dark-video-render
 
 Health: GET /health
 
@@ -62,3 +62,17 @@ DARK VIDEO udostępnia teraz asynchroniczne zadania:
 Metadane zadań, wejściowy manifest i gotowe MP4 są przechowywane na dysku w katalogu `DARK_VIDEO_JOBS_DIR` (domyślnie `render-service/data/render-jobs`). Przy restarcie serwera zadania przerwane w statusie queued/running wracają do kolejki i renderują się od początku. To nie jest kontynuacja od ostatniej klatki ani od ostatniego segmentu. Jedna instancja renderera przetwarza zadania kolejno, a limit oczekujących zadań wynosi 25.
 
 Interfejs PWA zapamiętuje identyfikator zadania, odświeża status i pokazuje postęp. Po ponownym otwarciu strony próbuje odtworzyć status ostatniego zadania. Nieudane zadanie można ponowić, a gotowy film pobrać. Brak jeszcze anulowania zadania, wieloinstancyjnej blokady kolejki, automatycznego czyszczenia starych plików i testów obciążeniowych. Katalog danych musi być trwałym wolumenem na hostingu; efemeryczny filesystem hostingu nie gwarantuje zachowania zadań po wymianie instancji.
+
+
+## Asynchronous render queue
+
+The PWA uses the queue API for long renders:
+- `POST /api/render/jobs` — validates the manifest before accepting it and returns HTTP 202 with a job ID.
+- `GET /api/render/jobs/:id` — returns status, stage, percentage and attempt count.
+- `POST /api/render/jobs/:id/retry` — retries a failed job from the beginning.
+- `GET /api/render/jobs/:id/download` — downloads the completed MP4.
+- The original synchronous `POST /api/render` endpoint remains available for compatibility.
+
+The queue stores job metadata and final MP4 files in `DARK_VIDEO_JOBS_DIR`. The Docker image defaults this to `/data/render-jobs`; mount a persistent volume at `/data` as shown above. If the container is recreated without the volume, saved jobs and films will be lost. Interrupted queued/running jobs are re-queued after restart and rendered again from the beginning; completed scene segments are not resumed.
+
+The current queue is single-process/single-instance, permits up to 25 waiting jobs and does not yet include cancellation, multi-instance locking, authentication, rate limiting, storage quotas or automated retention cleanup. Do not expose it publicly until those controls are implemented and reviewed.

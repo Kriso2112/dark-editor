@@ -35,6 +35,17 @@ test("saves and restores the current project in browser storage", async ({ page 
   await expect(page.locator("#script")).toHaveValue("Scenariusz testowy do zapisania.");
 });
 
+test("automatically restores scene and script edits after refresh", async ({ page }) => {
+  await page.locator("#topic").fill("Automatyczny zapis projektu");
+  await page.getByRole("button", { name:/STWÓRZ PLAN FILMU/ }).click();
+  const first = page.locator("#scenes .scene-card").first();
+  await first.locator('[data-field="narration"]').fill("Zmieniona narracja zapisana automatycznie.");
+  await page.locator("#script").fill("Zmieniony scenariusz zapisany automatycznie.");
+  await page.reload();
+  await expect(page.locator("#workspace")).toBeVisible();
+  await expect(page.locator("#script")).toHaveValue("Zmieniony scenariusz zapisany automatycznie.");
+  await expect(page.locator("#scenes .scene-card").first().locator('[data-field="narration"]')).toHaveValue("Zmieniona narracja zapisana automatycznie.");
+});
 test("supports a narrow mobile viewport without hiding the main action", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 });
   await expect(page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ })).toBeVisible();

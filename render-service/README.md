@@ -52,7 +52,7 @@ The renderer creates a temporary MP4 for each scene, then joins those parts with
 - Storage defaults: 1 GiB total job directory (`DARK_VIDEO_MAX_STORAGE_BYTES`) and 512 MiB per final MP4 (`DARK_VIDEO_MAX_OUTPUT_BYTES`). Limits are checked before accepting jobs and before saving completed output.
 - A filesystem lock prevents two local renderer processes from sharing one jobs directory. Run exactly one container/replica with this volume; the lock is not a distributed multi-host coordination system.
 - Docker runs as the unprivileged `node` user and uses the persistent `/data` volume. Keep the volume private and back it with a disk quota at the hosting layer as an additional safeguard.
-- Use HTTPS, a strong random token (at least 32 random bytes), private network access where possible, and host-level CPU/memory/disk limits. Do not expose the renderer publicly until the hosting configuration and Android browser flow have been tested.
+- Use HTTPS, a strong random token (at least 32 random bytes; production startup rejects shorter secrets), private network access where possible, and host-level CPU/memory/disk limits. Do not expose the renderer publicly until the hosting configuration and Android browser flow have been tested.
 - No paid AI provider is configured. No service is deployed by this change.
 
 
@@ -81,7 +81,7 @@ The PWA uses the queue API for long renders:
 
 The queue stores job metadata and final MP4 files in `DARK_VIDEO_JOBS_DIR`. The Docker image defaults this to `/data/render-jobs`; mount a persistent volume at `/data` as shown above. If the container is recreated without the volume, saved jobs and films will be lost. Interrupted queued/running jobs are re-queued after restart and rendered again from the beginning; completed scene segments are not resumed.
 
-Replace the example ALLOWED_ORIGIN value with the exact HTTPS origin serving the PWA. CORS is not authentication: the current queue is single-process/single-instance, permits up to 25 waiting jobs and retains at most 100 stored jobs; completed/failed jobs older than 7 days are pruned. It does not yet include cancellation, multi-instance locking, authentication, rate limiting or storage quotas. Do not expose it publicly until those controls are implemented and reviewed.
+Replace the example ALLOWED_ORIGIN value with the exact HTTPS origin serving the PWA. CORS is not authentication: the current queue is single-process/single-instance, permits up to 25 waiting jobs and retains at most 100 stored jobs; completed/failed jobs older than 7 days are pruned. It does not yet include cancellation, distributed multi-host coordination, account-based quotas or resumable segment checkpoints. Do not expose it publicly until those controls are implemented and reviewed.
 
 
 ## Secure test setup
@@ -102,6 +102,6 @@ Optional resource controls:
 
 The PWA asks for the bearer token in the MP4 settings. It is held only in the current page's memory, not localStorage; the user must enter it again after closing/reloading the tab. All status, retry and download calls also send the token. Use HTTPS for every non-local connection.
 
-The health endpoint is public; all API endpoints require the bearer token. Rate limiting is process-local and intended as a first safety layer, not a substitute for a reverse proxy/WAF or account-based quotas. The filesystem lock supports one renderer process on one shared local filesystem only. Do not scale this service to multiple hosts/replicas.
+The health endpoint is public; all API endpoints require the bearer token. Production disables the legacy synchronous `/api/render` endpoint (HTTP 410) so expensive renders must use the bounded queue. It remains available only when `ENABLE_SYNC_RENDER=true` outside production for local compatibility tests. Rate limiting is process-local and intended as a first safety layer, not a substitute for a reverse proxy/WAF or account-based quotas. The filesystem lock supports one renderer process on one shared local filesystem only. Do not scale this service to multiple hosts/replicas. The legacy synchronous render endpoint is disabled in production and must not be enabled there.
 
 No staging or production service is deployed by this repository change. First run the automated CI tests, then deploy only to a private staging environment with a persistent volume, strong secret, TLS and strict origin allowlist. Perform the Android end-to-end check before considering any public release.

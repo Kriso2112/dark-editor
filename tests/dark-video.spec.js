@@ -72,6 +72,7 @@ test("updates the word count correctly for ordinary text", async ({ page }) => {
 
 test("checks a configured DARK AI API in mock mode", async ({ page }) => {
   await page.route("https://api.example.test/api/health", route => route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: { ok: true, mode: "mock", paidProviderEnabled: false } }));
+  await page.locator(".api-settings").nth(0).locator("summary").click();
   await page.locator("#apiUrl").fill("https://api.example.test");
   await page.getByRole("button", { name: "SPRAWDŹ POŁĄCZENIE" }).click();
   await expect(page.locator("#notice")).toContainText("tryb testowy bez opłat");
@@ -84,6 +85,7 @@ test("uses the DARK AI mock API and refuses paid provider mode", async ({ page }
     if (request.url().endsWith("/api/health")) return route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: { ok: true, mode: "mock" } });
     return route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: { mode: "mock", project: { version: 1, title: "Test API", duration: 60, format: "16:9", mode: "auto", script: "Scenariusz z API.", scenes: [{ id: "api-1", title: "Otwarcie", narration: "Tekst sceny", visual: "Kadr testowy", seconds: 60, approved: false }] } } });
   });
+  await page.locator(".api-settings").nth(0).locator("summary").click();
   await page.locator("#apiUrl").fill("https://api.example.test");
   await page.locator("#topic").fill("Test API");
   await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
@@ -93,6 +95,7 @@ test("uses the DARK AI mock API and refuses paid provider mode", async ({ page }
 
 test("blocks a paid DARK AI provider until the app has a consent flow", async ({ page }) => {
   await page.route("https://api.example.test/api/health", route => route.fulfill({ headers: { "Access-Control-Allow-Origin": "*" }, json: { ok: true, mode: "provider-ready" } }));
+  await page.locator(".api-settings").nth(0).locator("summary").click();
   await page.locator("#apiUrl").fill("https://api.example.test");
   await page.locator("#topic").fill("Test płatnego AI");
   await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
@@ -110,7 +113,6 @@ test("allows editing scene title and duration", async ({ page }) => {
   await expect(first.locator('input[data-field="seconds"]')).toHaveValue("45");
 });
 
-
 test("exports an MP4 through the configured render service", async ({ page }) => {
   await page.route("https://render.example.test/api/render", route => {
     if (route.request().method() === "OPTIONS") {
@@ -122,6 +124,7 @@ test("exports an MP4 through the configured render service", async ({ page }) =>
       body: Buffer.concat([Buffer.from([0,0,0,24,102,116,121,112,105,115,111,109,0,0,2,0,105,115,111,109,109,112,52,50]), Buffer.alloc(4096)])
     });
   });
+  await page.locator(".api-settings").nth(1).locator("summary").click();
   await page.locator("#renderUrl").fill("https://render.example.test");
   await page.locator("#topic").fill("Test renderowania MP4");
   await page.getByRole("button", { name: /STWÓRZ PLAN FILMU/ }).click();
